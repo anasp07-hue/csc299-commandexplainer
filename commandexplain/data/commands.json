@@ -3,6 +3,7 @@
     "name": "change directory",
     "summary": "Moves you into a different folder. Typing cd by itself takes you back to your home folder.",
     "shells": ["bash", "zsh"],
+    "builtin_only": true,
     "flags": {
       "-P": "Go to the real folder that a shortcut (symlink) points to, instead of the shortcut itself.",
       "-L": "Follow shortcuts (symlinks) as they are. This is the normal behavior."
@@ -330,11 +331,16 @@
     "shells": ["bash", "zsh"],
     "flags": {
       "-u": "Run the command as a different user you name, instead of the administrator.",
+      "--user": "Same as -u: run the command as a different user you name.",
+      "-g": "Run the command as part of a different group (a named set of users) that you name.",
+      "--group": "Same as -g: run the command as part of a different group you name.",
       "-i": "Start an administrator session, so every command you type runs as root until you type exit.",
       "-k": "Forget your password right away, so the next sudo asks for it again.",
       "-l": "List what you are allowed to run with sudo."
     },
     "common_flags": ["-u", "-i"],
+    "runs_command": true,
+    "flags_with_values": ["-u", "--user", "-g", "--group"],
     "example": "sudo mkdir /opt/tools",
     "warning": "Commands run with sudo can change or delete anything, including files your computer needs to work. Only use it when you understand the command.",
     "shell_notes": {},
@@ -361,10 +367,15 @@
     "shells": ["bash", "zsh"],
     "flags": {
       "-9": "Force the program to stop immediately, without letting it clean up. Only use this if a normal kill doesn't work.",
+      "-KILL": "Same as -9: force the program to stop immediately, without letting it clean up.",
+      "-15": "Politely ask the program to stop, so it can save and clean up first. This is what kill does if you don't give a signal.",
+      "-TERM": "Same as -15: politely ask the program to stop, so it can save and clean up first.",
+      "-HUP": "Send a 'hang up' signal. Many background programs reload their settings when they get it, and others just stop.",
       "-l": "List the names of all the signals kill can send.",
       "-s": "Choose which signal to send by its name. For example, -s TERM politely asks the program to stop."
     },
     "common_flags": ["-9", "-l"],
+    "keep_flags_whole": true,
     "example": "kill 12345",
     "warning": "The program stops and may lose any unsaved work.",
     "shell_notes": {},
@@ -414,6 +425,7 @@
     "name": "command history",
     "summary": "Shows a numbered list of commands you have typed before. Type ! and a number (like !42) to run one of them again.",
     "shells": ["bash", "zsh"],
+    "builtin_only": true,
     "flags": {
       "-c": "(bash only) Clear the whole history list.",
       "-d": "(bash only) Delete one entry by its number."
@@ -444,6 +456,7 @@
     "name": "make a shortcut",
     "summary": "Creates a short name for a longer command, like alias ll='ls -l'. Typing alias by itself lists all your shortcuts.",
     "shells": ["bash", "zsh"],
+    "builtin_only": true,
     "flags": {},
     "common_flags": [],
     "example": "alias ll='ls -l'",
@@ -458,6 +471,7 @@
     "name": "share a variable",
     "summary": "Creates a named setting (a variable) that programs started from this terminal can read, like export EDITOR=nano. It only lasts until you close the terminal.",
     "shells": ["bash", "zsh"],
+    "builtin_only": true,
     "flags": {
       "-p": "List all the named settings (variables) that programs can read.",
       "-n": "(bash only) Stop sharing a variable with programs, but keep it in this shell."
@@ -475,6 +489,7 @@
     "name": "run a file's commands",
     "summary": "Runs the commands from a file inside your current terminal. It is often used to reload your settings after you edit them.",
     "shells": ["bash", "zsh"],
+    "builtin_only": true,
     "flags": {},
     "common_flags": [],
     "example": "source ~/.zshrc",
@@ -489,6 +504,7 @@
     "name": "leave the shell",
     "summary": "Closes the shell you are in, which usually closes the terminal window or tab.",
     "shells": ["bash", "zsh"],
+    "builtin_only": true,
     "flags": {},
     "common_flags": [],
     "example": "exit",
@@ -500,6 +516,7 @@
     "name": "shell options",
     "summary": "Turns bash settings on or off, or shows which ones are on.",
     "shells": ["bash"],
+    "builtin_only": true,
     "flags": {
       "-s": "Turn a setting on.",
       "-u": "Turn a setting off.",
@@ -515,6 +532,7 @@
     "name": "set option",
     "summary": "Turns on a zsh setting that changes how the shell behaves. Typing setopt by itself lists the settings you have changed.",
     "shells": ["zsh"],
+    "builtin_only": true,
     "flags": {},
     "common_flags": [],
     "example": "setopt autocd",
@@ -526,6 +544,7 @@
     "name": "unset option",
     "summary": "Turns off a zsh setting. It is the opposite of setopt.",
     "shells": ["zsh"],
+    "builtin_only": true,
     "flags": {},
     "common_flags": [],
     "example": "unsetopt beep",

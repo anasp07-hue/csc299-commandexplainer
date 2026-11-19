@@ -66,10 +66,22 @@ start
   2. Split the tokens into **segments** at these operators: `|`, `&&`, `||`, `;`, `>`, `>>`, `<`. For `>`, `>>`, and `<`, the next token is a filename, not a command.
   3. In each segment, the first token is the **command** and the remaining tokens are **arguments**.
   4. A token that starts with `--` is one long flag (`--all`).
-  5. A token that starts with a single `-` and has more than one character is handled in two steps (ADR 0007):
+  5. A token that starts with a single `-` and has more than one character is read like this (ADR 0007):
      - **Whole token first.** If the whole token is a key in that command's `flags`, it is one flag. For example, `find`'s `-name` stays `-name`.
      - **Otherwise split.** The token is split into separate short flags: `-rf` becomes `-r` and `-f`.
-  6. A token that doesn't start with `-` (a filename, path, and so on) is listed as "an argument you gave the command" and isn't explained further.
+     - **Numbers stay whole.** A dash followed only by digits stays one flag: `-15` stays `-15` (ADR 0009).
+     - **Details** (ADR 0009):
+       - `--name=value` counts as the flag `--name`.
+       - A lone `-` is an argument (as in `cd -`).
+       - `--` means "no more flags": everything after it is an argument.
+       - A flag typed twice (`-ll`) is shown once.
+       - Flags are case-sensitive (`-r` and `-R` are different), but command names are not.
+  6. A token that doesn't start with `-` (a filename, path, and so on) is an **argument**. Each one is listed on its own line as `argument: <word>` and isn't explained further (ADR 0012).
+  7. **Commands that run another command** (`sudo`, marked with `runs_command` in the data) stop reading their own flags at the first argument. That word and everything after it are the **inner command**, which is explained in full after the wrapper (ADR 0010):
+     - A flag listed in `flags_with_values` takes the next word as its value: in `sudo -u bob ls -l`, `bob` is `-u`'s value and `ls -l` is the inner command.
+     - `--` also starts the inner command: `sudo -- rm -rf x`.
+     - A value given with `=` (`--user=bob`) doesn't take the next word.
+  8. A command marked `keep_flags_whole` (`kill`) never has its single-dash groups split, because `-INT` and `-SIGKILL` are signal names, not letter groups (ADR 0014).
 - Empty input re-prompts silently.
 - An unclosed quote (`echo "hi`) prints `It looks like a quote (") is missing its partner. Please re-enter it.` and re-prompts.
 - An operator with nothing on one side (`| grep`, `ls &&`) prints `Something is missing before/after "|". Please re-enter it.`
@@ -94,6 +106,7 @@ Rules:
 - If a flag isn't in the data: `-z   I don't have an explanation for this option. Try "man ls" for the full manual.`
 - A **warning** line for dangerous commands or flags (for example `rm -rf`, `sudo`, `chmod 777`): `⚠ Careful: this deletes files permanently. There is no trash/undo.`
 - A shell-specific note when one exists for the selected shell.
+- For a command that runs another command (§3.2 step 7), the inner command's full explanation follows, after a line `sudo runs this command:`. The wrapper's "Common options" are left out in that case, so they don't get mixed up with the inner command's flags (for example, sudo's `-i` and rm's `-i`). If the inner command isn't in the data, a line says so (ADR 0010). If the inner command is marked `builtin_only` (like `cd`), a warning comes first: `⚠ Careful: sudo can't run cd, because cd is built into the shell. It will fail or have no effect.` The inner command is still explained after it (ADR 0013).
 - An example of typical use.
 
 ### 3.3.1 Pipes and chains
@@ -141,6 +154,8 @@ In short: list all files, then keep only the lines containing "txt".
   1. **One edit away.** Find every name that is exactly one edit from the input. An edit is one letter added, removed, or changed, or two neighboring letters swapped (`sl` → `ls`, `cta` → `cat`, `cdd` → `cd`). If more than one name qualifies, pick the one with the highest `difflib.SequenceMatcher` ratio, breaking ties alphabetically.
   2. **Otherwise, close enough.** Use `difflib.get_close_matches(word, names, n=1, cutoff=0.75)`. This catches longer typos like `mkdri` → `mkdir`.
 - Input shorter than 2 characters never gets a suggestion, because almost every short name is one edit away from it.
+- Only input containing at least one letter gets a suggestion, and only names containing a letter are suggested. So `..` is never turned into `.` (ADR 0011).
+- The "not covered" check (§9) runs **before** suggestions. That way, real commands outside §6, such as `unset` or `unalias`, get "not covered" instead of a misleading "Did you mean 'unsetopt'?" (ADR 0011).
 - Only the **single best** match is suggested.
 - The yes/no prompt accepts `y`, `yes`, `n`, `no`, ignoring case. Anything else re-asks.
 - **yes**: explain the suggested command, keeping any flags the user typed (`sl -la` becomes `ls -la`).
@@ -210,6 +225,10 @@ All command knowledge lives in one data file, `commandexplain/data/commands.json
 | `shell_notes` | dict[str, str] | no | Extra note per shell, for example `{"zsh": "..."}` |
 | `aliases` | list[str] | no | Other names that map to this entry (for example `"."` → `source`) |
 | `short` | str | no | A 2–4 word verb phrase for the "In short" line of a chain (for example `"list all files"`) |
+| `runs_command` | bool | no | `true` for commands that run another command, like `sudo` (§3.2 step 7, ADR 0010) |
+| `flags_with_values` | list[str] | no | Flags that take the next word as their value, like sudo's `-u`; each must be a key in `flags` (ADR 0010) |
+| `builtin_only` | bool | no | `true` for shell builtins with no separate program (`cd`, `export`, ...), which `sudo` can't run (ADR 0013) |
+| `keep_flags_whole` | bool | no | `true` when single-dash groups must never be split, like kill's `-INT` (ADR 0014) |
 
 ### 5.1 Operators
 
@@ -288,7 +307,8 @@ csc299-commandexplain-cli/
 | `commands.json` missing or invalid JSON | Print a clear error and exit with code 1 (no traceback) |
 | Ctrl+C / Ctrl+D at any prompt | Print "Goodbye!" and exit with code 0 |
 | Unknown flag | Explain the known parts; for the unknown flag, suggest `man <cmd>` |
-| Third-party tool (`git`, `npm`, and so on) | "'git' isn't a built-in terminal command, so it isn't covered." (uses a small list of known non-builtins) |
+| Third-party tool (`git`, `npm`, and so on) | "'git' isn't a built-in terminal command, so it isn't covered." Uses a small list of known non-builtins, kept in the data |
+| Real command outside §6 (`unset`, `unalias`, `pkill`, and so on) | "'unset' is a real command, but I don't cover it yet." Also on that list. Checked before spelling suggestions (ADR 0011) |
 
 ## 10. Acceptance criteria
 
@@ -330,7 +350,7 @@ Done when: acceptance criterion 12 passes. Opening Python and running `load_comm
 **Goal:** turn a single command string into an explanation, using plain functions that are easy to test.
 
 Deliverables:
-- `parser.py`: splits one command into command / flags / arguments, including splitting `-rf` into `-r -f` (§3.2 steps 3–6, without operators yet).
+- `parser.py`: splits one command into command / flags / arguments, including splitting `-rf` into `-r -f` and finding the command that `sudo` runs (§3.2 steps 3–7, without operators yet).
 - `lookup.py`: `find_command(name)` with exact match, case-insensitive match, and alias lookup. `suggest(name)` returns the best match using the two-step rule in §4, or `None`.
 - `formatter.py`: builds the explanation text as described in §3.3: typed flags or common flags, unknown flag message, warning, shell note, example. Plain text only.
 - Tests for parser, lookup, and formatter.
@@ -342,7 +362,7 @@ Done when: `explain("rm -rf", shell="zsh")` returns the text required by accepta
 
 Deliverables:
 - `shell.py`: detect the shell from `$SHELL`, confirm it, fall back to the manual question (§3.1).
-- `cli.py`: the main loop (§3), yes/no prompts, "Did you mean" flow (§4), shell-only commands (§3.4), quit / Ctrl+C / Ctrl+D / `exit` behavior (§3.5), and a "not covered" message for tools like `git` (§9).
+- `cli.py`: the main loop (§3), yes/no prompts, "Did you mean" flow (§4), shell-only commands (§3.4), quit / Ctrl+C / Ctrl+D / `exit` behavior (§3.5), and a "not covered" message for tools like `git` and uncovered builtins like `unset`. That check runs before spelling suggestions (§4, §9, ADR 0011).
 - `__main__.py` and `pyproject.toml` so `python -m commandexplain` and `commandexplain` both work, plus the `--shell` option.
 - `tests/test_cli.py` runs simulated sessions using `input_fn`/`print_fn`.
 
@@ -391,6 +411,12 @@ Each decision has an ADR in `docs/adr/` with the full reasoning.
 | Spelling suggestions | One-edit check first, then difflib ≥ 0.75 (§4) | 0006 |
 | Multi-letter flags (`-name`) | Match the whole token first, split only if unknown (§3.2) | 0007 |
 | Common flags | Up to 5, only beginner-useful ones, may be empty (§3.3) | 0008 |
+| Flag token details | Numbers stay whole, `--x=y` → `--x`, lone `-` and words after `--` are arguments (§3.2) | 0009 |
+| Commands that run commands (`sudo`) | Stop at the inner command and explain it too (§3.2, §3.3) | 0010 |
+| Suggestion limits | Letters only, and the "not covered" check comes before suggestions (§4, §9) | 0011 |
+| Argument layout | One `argument: x` line each (§3.2) | 0012 |
+| `sudo` with a shell builtin | Warn that it can't work, then explain the builtin (§3.3) | 0013 |
+| Signal names (`kill -INT`) | `keep_flags_whole` data field; never split (§3.2) | 0014 |
 
 ## 13. Open questions
 

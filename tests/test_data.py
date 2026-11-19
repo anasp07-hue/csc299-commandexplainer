@@ -51,6 +51,10 @@ OPTIONAL_FIELDS: dict[str, type | tuple[type, ...]] = {
     "shell_notes": dict,
     "aliases": list,
     "short": str,
+    "runs_command": bool,
+    "flags_with_values": list,
+    "builtin_only": bool,
+    "keep_flags_whole": bool,
 }
 
 
@@ -243,3 +247,33 @@ def test_overwrite_operator_warns() -> None:
 def test_count_sentences(text: str, expected: int) -> None:
     """File names and paths with dots don't count as sentence endings."""
     assert count_sentences(text) == expected
+
+
+@pytest.mark.parametrize(("name", "entry"), command_params())
+def test_flags_with_values_exist_in_flags(name: str, entry: dict) -> None:
+    """A flag that takes a value must be one of the command's flags (ADR 0010)."""
+    missing = [flag for flag in entry.get("flags_with_values", []) if flag not in entry["flags"]]
+    assert not missing, f"{name}: flags_with_values not in flags: {missing}"
+
+
+def test_sudo_runs_another_command() -> None:
+    """sudo is marked as running another command, and -u takes a user name (ADR 0010)."""
+    assert COMMANDS["sudo"]["runs_command"] is True
+    assert set(COMMANDS["sudo"]["flags_with_values"]) == {"-u", "--user", "-g", "--group"}
+
+
+# Shell builtins with no separate program, so sudo can't run them (ADR 0013).
+BUILTIN_ONLY = {
+    "cd", "alias", "export", "source", "exit", "history", "shopt", "setopt", "unsetopt",
+}
+
+
+def test_builtin_only_commands_are_marked() -> None:
+    """Exactly the shell-only builtins carry builtin_only (echo, kill, pwd have real programs)."""
+    marked = {name for name, entry in COMMANDS.items() if entry.get("builtin_only")}
+    assert marked == BUILTIN_ONLY
+
+
+def test_kill_keeps_flags_whole() -> None:
+    """kill's -INT and -SIGKILL are signal names, so they must not be split (ADR 0014)."""
+    assert COMMANDS["kill"]["keep_flags_whole"] is True
