@@ -6,8 +6,14 @@ CommandExplain is a Python CLI that explains bash/zsh terminal commands in simpl
 
 - **SPEC.md is the source of truth.** Build what the spec says. If something in it needs to change, or seems wrong or unclear, ask first. Then update `SPEC.md` and write an ADR for the change. Never quietly diverge from the spec.
 - **Work on one phase at a time.** Work on phases from SPEC.md §11 in order, and only on the current phase. Don't start work that belongs to a later phase.
-- **Stop after each phase.** When a phase is done, write a handoff, report back, and wait for approval before starting the next phase.
 - **A phase is done only when its tests pass.** Every acceptance criterion listed for that phase must pass, and the full `pytest` suite must pass.
+- **When a phase is finished, follow these steps in order:**
+  1. Run `pytest` and make sure everything passes.
+  2. Run the `/phase-review <N>` skill. It writes `docs/reviews/phase-N-review.md`.
+  3. Show the user the verdict and the findings. Fix only the ones the user approves. If any blocker was fixed, re-run the review.
+  4. Write the handoff, including the review verdict.
+  5. Commit.
+  6. Stop and wait for approval before starting the next phase.
 
 ## Git
 
@@ -27,6 +33,7 @@ CommandExplain is a Python CLI that explains bash/zsh terminal commands in simpl
   - open issues or questions,
   - the next steps.
 - **ADRs** go in `docs/adr/NNNN-short-title.md`, numbered `0001`, `0002`, and so on. Write one for every meaningful design decision or spec change. Use these sections: **Status**, **Context**, **Decision**, **Consequences**. Never edit an accepted ADR; supersede it with a new one.
+- **Reviews** go in `docs/reviews/phase-N-review.md`. The `phase-review` skill writes them, and they get committed with the phase.
 - Before starting work, read the latest handoff in `docs/handoffs/`.
 
 ## Code
