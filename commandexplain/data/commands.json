@@ -21,7 +21,7 @@
   "pwd": {
     "name": "print working directory",
     "short": "show the current folder",
-    "summary": "Shows the full path of the folder you are in right now.",
+    "summary": "Shows the full location (path) of the folder you are in right now.",
     "shells": ["bash", "zsh"],
     "flags": {
       "-P": "Show the real location, with any shortcuts (symlinks) worked out.",
@@ -43,7 +43,7 @@
       "-a": "Also show hidden files (the ones whose names start with a dot).",
       "-A": "Show hidden files, but leave out the special . and .. entries.",
       "-h": "Show file sizes in easy units like K, M, and G (use it together with -l).",
-      "-t": "Sort by time changed, newest first.",
+      "-t": "Sort by when each file was last changed, newest first.",
       "-r": "Reverse the order of the list.",
       "-R": "Also list everything inside every sub-folder.",
       "-1": "Show one name per line.",
@@ -61,8 +61,8 @@
     "summary": "Creates a new folder.",
     "shells": ["bash", "zsh"],
     "flags": {
-      "-p": "Also create any missing folders along the path, and don't complain if the folder already exists.",
-      "-v": "Print a message for each folder that gets created."
+      "-p": "Also create any missing folders along the way (like a and b in a/b/c), and don't complain if the folder already exists.",
+      "-v": "Show a message for each folder that gets created."
     },
     "common_flags": ["-p"],
     "example": "mkdir projects",
@@ -76,7 +76,7 @@
     "summary": "Deletes an empty folder. It refuses to delete a folder that still has something inside it.",
     "shells": ["bash", "zsh"],
     "flags": {
-      "-p": "Also delete the folders above it in the path, as long as they are empty too."
+      "-p": "Also delete the folders it's inside (like b and then a in a/b/c), as long as they become empty too."
     },
     "common_flags": [],
     "example": "rmdir old-folder",
@@ -110,7 +110,7 @@
       "-r": "Copy a folder and everything inside it. On macOS, use -R instead, because -r can behave differently there.",
       "-i": "Ask before replacing a file that already exists.",
       "-n": "Never replace a file that already exists.",
-      "-v": "Print the name of each file as it is copied.",
+      "-v": "Show the name of each file as it is copied.",
       "-p": "Keep the original file's dates and permissions on the copy."
     },
     "common_flags": ["-R", "-i", "-v"],
@@ -127,7 +127,7 @@
     "flags": {
       "-i": "Ask before replacing a file that already exists.",
       "-n": "Never replace a file that already exists.",
-      "-v": "Print the name of each file as it is moved.",
+      "-v": "Show the name of each file as it is moved.",
       "-f": "Replace existing files without asking."
     },
     "common_flags": ["-i", "-v"],
@@ -147,7 +147,7 @@
       "-f": "Force: don't ask before deleting, and don't complain if a file doesn't exist.",
       "-i": "Ask 'are you sure?' before deleting each file.",
       "-d": "Also allow deleting empty folders.",
-      "-v": "Print the name of each file as it is deleted."
+      "-v": "Show the name of each file as it is deleted."
     },
     "common_flags": ["-r", "-f", "-i"],
     "example": "rm notes.txt",
@@ -165,7 +165,7 @@
     "flags": {
       "-s": "Make a symbolic link, which works like a normal shortcut. Without -s, ln makes a hard link, which is a second name for the same file.",
       "-f": "Replace anything that already exists where the link is being made.",
-      "-v": "Print a message for each link that gets created."
+      "-v": "Show a message for each link that gets created."
     },
     "common_flags": ["-s"],
     "example": "ln -s ~/Documents/project project-shortcut",
@@ -175,8 +175,8 @@
   },
   "cat": {
     "name": "concatenate",
-    "short": "print a file",
-    "summary": "Prints everything in a file to the screen. It can also join several files together, one after another.",
+    "short": "show a file",
+    "summary": "Shows everything in a file on the screen. It can also join several files together, one after another.",
     "shells": ["bash", "zsh"],
     "flags": {
       "-n": "Number every line.",
@@ -311,7 +311,7 @@
     "warning": null,
     "shell_notes": {
       "bash": "In bash, which doesn't know about your aliases. Use type instead to see those too.",
-      "zsh": "In zsh, which also tells you if the name is an alias or a function."
+      "zsh": "In zsh, which also tells you if the name is an alias (a shortcut made with alias) or a function (a small saved script)."
     },
     "aliases": []
   },
@@ -322,7 +322,7 @@
     "shells": ["bash", "zsh"],
     "flags": {
       "-R": "Change the permissions of a folder and everything inside it.",
-      "-v": "Print a message for each file that gets changed."
+      "-v": "Show a message for each file that gets changed."
     },
     "common_flags": ["-R"],
     "example": "chmod +x script.sh",
@@ -337,7 +337,7 @@
     "shells": ["bash", "zsh"],
     "flags": {
       "-R": "Change the owner of a folder and everything inside it.",
-      "-v": "Print a message for each file that gets changed."
+      "-v": "Show a message for each file that gets changed."
     },
     "common_flags": ["-R"],
     "example": "sudo chown alex notes.txt",
@@ -386,7 +386,7 @@
   "kill": {
     "name": "stop a program",
     "short": "stop a program",
-    "summary": "Stops a running program by its process number (PID). Use ps or top to find the PID.",
+    "summary": "Stops a running program by sending it a signal (a short message that tells it what to do). You pick the program by its number (PID), which ps or top can show you.",
     "shells": ["bash", "zsh"],
     "flags": {
       "-9": "Force the program to stop immediately, without letting it clean up. Only use this if a normal kill doesn't work.",
@@ -419,9 +419,9 @@
     "aliases": []
   },
   "echo": {
-    "name": "print text",
-    "short": "print text",
-    "summary": "Prints the text you give it back to the screen. It can also show what a named setting (a variable) holds, like echo $HOME for your home folder.",
+    "name": "show text",
+    "short": "show text",
+    "summary": "Shows the text you give it on the screen. It can also show what a named setting (a variable) holds, like echo $HOME for your home folder.",
     "shells": ["bash", "zsh"],
     "flags": {
       "-n": "Don't move to a new line at the end.",
@@ -534,7 +534,7 @@
   "exit": {
     "name": "leave the shell",
     "short": "leave the shell",
-    "summary": "Closes the shell you are in, which usually closes the terminal window or tab.",
+    "summary": "Closes the shell (the program reading your commands), which usually closes the terminal window or tab.",
     "shells": ["bash", "zsh"],
     "builtin_only": true,
     "flags": {},

@@ -1,7 +1,8 @@
 """Split typed text into commands, operators, flags, and arguments (SPEC.md §3.2).
 
 parse_chain() splits a whole line at pipes and chains (|, &&, ||, ;) and
-redirects (>, >>, <). parse_input() and split_flags() then handle one command.
+redirects (>, >>, <). split_flags() then sorts one command's words into flags,
+arguments, and the command that sudo runs.
 """
 
 from __future__ import annotations
@@ -36,14 +37,6 @@ class ParseError(Exception):
 
 
 @dataclass(frozen=True)
-class ParsedInput:
-    """A typed command split into its name and the raw words after it."""
-
-    command: str
-    args: tuple[str, ...]
-
-
-@dataclass(frozen=True)
 class SplitArgs:
     """The words after a command, sorted into flags, plain arguments, and an inner command.
 
@@ -73,16 +66,6 @@ def tokenize(text: str) -> list[str]:
         else:
             reason = ParseError.UNCLOSED_QUOTE
         raise ParseError(reason, message) from None
-
-
-def parse_input(text: str) -> ParsedInput | None:
-    """Split typed text into a command and its raw arguments. Returns None for blank input."""
-    tokens = tokenize(text)
-    if not tokens:
-        return None
-    if not tokens[0]:
-        raise ParseError(ParseError.EMPTY_COMMAND, "the command name is empty")
-    return ParsedInput(command=tokens[0], args=tuple(tokens[1:]))
 
 
 def _is_plain(token: str) -> bool:

@@ -32,16 +32,22 @@ def read_shell_answer(text: str) -> str | None:
     return SHELL_ANSWERS.get(text.strip().lower())
 
 
+def _plain(text: str) -> str:
+    """Leave text unchanged (the default when no color is wanted)."""
+    return text
+
+
 def ask_shell(
     ask: Callable[[str], str],
     confirm: Callable[[str], bool],
     say: Callable[[str], None],
+    highlight: Callable[[str], str] = _plain,
 ) -> str:
     """Ask "bash or zsh?" until the answer is valid.
 
     Small typos get "Did you mean ...?". Other real shells (sh, fish, ...) are
     told they aren't supported. Every answer that isn't accepted is followed by
-    the hint (SPEC.md §3.1).
+    the hint (SPEC.md §3.1). `highlight` colors the "Did you mean" question.
     """
     while True:
         answer = ask(MANUAL_PROMPT)
@@ -53,7 +59,7 @@ def ask_shell(
             say(UNSUPPORTED.format(name=word))
         else:
             guess = suggest(word, _SHELL_NAMES)
-            if guess and confirm(f"Did you mean {guess}?"):
+            if guess and confirm(highlight(f"Did you mean {guess}?")):
                 return guess
         say(HINT)
 
@@ -84,6 +90,7 @@ def choose_shell(
     confirm: Callable[[str], bool],
     say: Callable[[str], None],
     env: Mapping[str, str],
+    highlight: Callable[[str], str] = _plain,
 ) -> str:
     """Detect the shell and confirm it, or ask the user if it can't be detected or is wrong."""
     detected = detect_shell(env)
@@ -91,4 +98,4 @@ def choose_shell(
         chosen = confirm_detected(detected, ask, say)
         if chosen:
             return chosen
-    return ask_shell(ask, confirm, say)
+    return ask_shell(ask, confirm, say, highlight)

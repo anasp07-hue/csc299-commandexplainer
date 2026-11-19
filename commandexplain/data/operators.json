@@ -2,7 +2,7 @@
   "|": {
     "name": "pipe",
     "short": "then pass the output to",
-    "summary": "Takes what the left command prints and feeds it into the right command."
+    "summary": "Takes the output of the left command (what it would show on screen) and feeds it into the right command."
   },
   "&&": {
     "name": "and then",

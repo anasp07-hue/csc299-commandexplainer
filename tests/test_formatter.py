@@ -415,8 +415,9 @@ def test_redirect_block_names_file_and_warns() -> None:
 
 def test_not_covered_command_in_chain_is_named() -> None:
     """A not-covered command gets its message as its block, and no "In short" line."""
-    text = explain("ls | sort", shell="bash")
-    assert "sort\n  'sort' is a real command, but I don't cover it yet." in text
+    not_covered = {"zzfake": {"kind": "uncovered"}}  # independent of the real data
+    text = explain("ls | zzfake", shell="bash", not_covered=not_covered)
+    assert "zzfake\n  'zzfake' is a real command, but I don't cover it yet." in text
     assert "In short" not in text
 
 
@@ -431,7 +432,7 @@ def test_sudo_inside_chain() -> None:
     text = explain("sudo rm -rf x ; echo done", shell="bash")
     assert "  sudo runs this command:\n  rm — remove:" in text
     assert "This deletes files permanently." in text
-    assert "In short: delete files (using sudo), then print text." in text
+    assert "In short: delete files (using sudo), then show text." in text
 
 
 def test_sudo_builtin_warning_inside_chain() -> None:

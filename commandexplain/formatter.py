@@ -1,11 +1,16 @@
-"""Build the plain-text explanation for a command or a chain (SPEC.md §3.3, §3.3.1)."""
+"""Build the explanation text for a command or a chain (SPEC.md §3.3, §3.3.1).
+
+Text is laid out and wrapped first, and colors (SPEC.md §3.3.2) are added
+afterwards, so color codes never affect line widths.
+"""
 
 from __future__ import annotations
 
 import textwrap
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import Any
 
+from commandexplain.colors import PLAIN, Palette
 from commandexplain.lookup import (
     default_commands,
     default_not_covered,
@@ -55,8 +60,27 @@ def _wrap(text: str, first_prefix: str, next_prefix: str) -> list[str]:
     )
 
 
-def _rows(items: Sequence[tuple[str, str]], indent: str) -> list[str]:
-    """Lay out flag/explanation pairs in two aligned columns.
+def _paint_start(line: str, prefix: str, word: str, paint: Callable[[str], str]) -> str:
+    """Color `word` where it sits right after `prefix` at the start of an already-wrapped line."""
+    start = prefix + word
+    if not line.startswith(start):
+        return line
+    return prefix + paint(word) + line[len(start):]
+
+
+def _paint_lines(lines: list[str], paint: Callable[[str], str]) -> list[str]:
+    """Color whole wrapped lines (after their indent), for warnings."""
+    painted: list[str] = []
+    for line in lines:
+        body = line.lstrip(" ")
+        painted.append(line[: len(line) - len(body)] + paint(body))
+    return painted
+
+
+def _rows(
+    items: Sequence[tuple[str, str]], indent: str, palette: Palette = PLAIN
+) -> list[str]:
+    """Lay out flag/explanation pairs in two aligned columns, with the flags colored.
 
     A label longer than MAX_LABEL (like a made-up 80-character flag) goes on its
     own line, with its text below, so it can't squeeze the column for the others.
@@ -67,19 +91,21 @@ def _rows(items: Sequence[tuple[str, str]], indent: str) -> list[str]:
     lines: list[str] = []
     for label, text in items:
         if len(label) <= MAX_LABEL:
-            lines += _wrap(text, indent + label.ljust(width), pad)
+            row = _wrap(text, indent + label.ljust(width), pad)
         else:
-            lines.append(indent + label)
-            lines += _wrap(text, pad, pad)
+            row = [indent + label, *_wrap(text, pad, pad)]
+        row[0] = _paint_start(row[0], indent, label, palette.flag)
+        lines += row
     return lines
 
 
 def _typed_flag_rows(
-    name: str, entry: dict[str, Any], flags: Sequence[str], indent: str
+    name: str, entry: dict[str, Any], flags: Sequence[str], indent: str, palette: Palette
 ) -> list[str]:
     """Rows for the flags the user typed, with a pointer to man for unknown ones."""
     unknown = UNKNOWN_FLAG.format(name=name)
-    return _rows([(flag, entry["flags"].get(flag, unknown)) for flag in flags], indent)
+    rows = [(flag, entry["flags"].get(flag, unknown)) for flag in flags]
+    return _rows(rows, indent, palette)
 
 
 def _argument_lines(arguments: Sequence[str], indent: str) -> list[str]:
@@ -87,24 +113,29 @@ def _argument_lines(arguments: Sequence[str], indent: str) -> list[str]:
     return [f"{indent}argument: {argument}" for argument in arguments]
 
 
-def _notes(entry: dict[str, Any], shell: str) -> list[str]:
+def _warning_lines(text: str, palette: Palette) -> list[str]:
+    """A '⚠ Careful:' warning, wrapped and colored."""
+    return _paint_lines(_wrap(f"⚠ Careful: {text}", INDENT, INDENT * 2), palette.warning)
+
+
+def _notes(entry: dict[str, Any], shell: str, palette: Palette) -> list[str]:
     """The warning and the shell note for the user's shell, if the command has them."""
     lines: list[str] = []
     if entry.get("warning"):
-        lines += _wrap(f"⚠ Careful: {entry['warning']}", INDENT, INDENT * 2)
+        lines += _warning_lines(entry["warning"], palette)
     shell_note = entry.get("shell_notes", {}).get(shell)
     if shell_note:
         lines += _wrap(f"Note for {shell}: {shell_note}", INDENT, INDENT * 2)
     return lines
 
 
-def _builtin_warning(wrapper: str, name: str) -> list[str]:
+def _builtin_warning(wrapper: str, name: str, palette: Palette) -> list[str]:
     """Warning that sudo can't run a shell builtin like cd (ADR 0013)."""
     text = (
-        f"⚠ Careful: {wrapper} can't run {name}, because {name} is built into "
+        f"{wrapper} can't run {name}, because {name} is built into "
         "the shell. It will fail or have no effect."
     )
-    return _wrap(text, INDENT, INDENT * 2)
+    return _warning_lines(text, palette)
 
 
 def _split(entry: dict[str, Any], args: Sequence[str]) -> SplitArgs:
@@ -128,6 +159,7 @@ def format_explanation(
     arguments: Sequence[str],
     shell: str,
     show_common: bool = True,
+    palette: Palette = PLAIN,
 ) -> str:
     """Return the full explanation text for a known command.
 
@@ -137,18 +169,18 @@ def format_explanation(
     it runs another command (ADR 0010). Each argument is listed on its own line
     (ADR 0012).
     """
-    title = f"{name}  —  {entry['name']}"
+    title = f"{palette.command(name)}  —  {entry['name']}"
     blocks: list[list[str]] = [[title, *_wrap(entry["summary"], INDENT, INDENT)]]
 
     if flags:
-        blocks.append(_typed_flag_rows(name, entry, flags, INDENT))
+        blocks.append(_typed_flag_rows(name, entry, flags, INDENT, palette))
     elif show_common and entry["common_flags"]:
         common = [(flag, entry["flags"][flag]) for flag in entry["common_flags"]]
-        blocks.append([f"{INDENT}Common options:", *_rows(common, INDENT * 2)])
+        blocks.append([f"{INDENT}Common options:", *_rows(common, INDENT * 2, palette)])
 
     if arguments:
         blocks.append(_argument_lines(arguments, INDENT))
-    notes = _notes(entry, shell)
+    notes = _notes(entry, shell, palette)
     if notes:
         blocks.append(notes)
 
@@ -156,7 +188,9 @@ def format_explanation(
     return "\n\n".join("\n".join(block) for block in blocks)
 
 
-def _explain_single(tokens: Sequence[str], shell: str, commands: Data) -> str:
+def _explain_single(
+    tokens: Sequence[str], shell: str, commands: Data, palette: Palette = PLAIN
+) -> str:
     """Explain one command, plus any commands it runs (like sudo rm ...).
 
     Uses a loop, not recursion, so a long chain like 'sudo sudo sudo ... ls'
@@ -178,13 +212,19 @@ def _explain_single(tokens: Sequence[str], shell: str, commands: Data) -> str:
         if wrapper is not None:
             parts.append(f"{wrapper} runs this command:")
             if entry.get("builtin_only"):
-                parts.append("\n".join(_builtin_warning(wrapper, name)))
+                parts.append("\n".join(_builtin_warning(wrapper, name, palette)))
 
         split = _split(entry, current[1:])
         has_inner = bool(split.inner)
         parts.append(
             format_explanation(
-                name, entry, split.flags, split.arguments, shell, show_common=not has_inner
+                name,
+                entry,
+                split.flags,
+                split.arguments,
+                shell,
+                show_common=not has_inner,
+                palette=palette,
             )
         )
         if not has_inner:
@@ -198,7 +238,11 @@ def _explain_single(tokens: Sequence[str], shell: str, commands: Data) -> str:
 
 
 def _chain_command_block(
-    command: ChainCommand, shell: str, commands: Data, not_covered: Data
+    command: ChainCommand,
+    shell: str,
+    commands: Data,
+    not_covered: Data,
+    palette: Palette = PLAIN,
 ) -> tuple[list[str], str | None]:
     """Explain one command inside a chain, in the short chain format (ADR 0018).
 
@@ -230,12 +274,14 @@ def _chain_command_block(
         if wrappers:
             lines.append(f"{INDENT}{wrappers[-1]} runs this command:")
             if entry.get("builtin_only"):
-                lines += _builtin_warning(wrappers[-1], name)
+                lines += _builtin_warning(wrappers[-1], name, palette)
         split = _split(entry, current[1:])
-        lines += _wrap(f"{name} — {entry['name']}: {entry['summary']}", INDENT, INDENT * 2)
-        lines += _typed_flag_rows(name, entry, split.flags, INDENT * 2)
+        summary = _wrap(f"{name} — {entry['name']}: {entry['summary']}", INDENT, INDENT * 2)
+        summary[0] = _paint_start(summary[0], INDENT, name, palette.command)
+        lines += summary
+        lines += _typed_flag_rows(name, entry, split.flags, INDENT * 2, palette)
         lines += _argument_lines(split.arguments, INDENT * 2)
-        lines += _notes(entry, shell)
+        lines += _notes(entry, shell, palette)
         if not split.inner:
             phrase = entry.get("short")
             if wrappers and entry.get("builtin_only"):
@@ -247,14 +293,17 @@ def _chain_command_block(
         current = list(split.inner)
 
 
-def _operator_block(symbol: str, operators: Data, target: str | None = None) -> list[str]:
+def _operator_block(
+    symbol: str, operators: Data, target: str | None = None, palette: Palette = PLAIN
+) -> list[str]:
     """Explain one operator, with the file it uses if it's a redirect."""
     entry = operators[symbol]
-    lines = [f"{symbol}  ({entry['name']})", *_wrap(entry["summary"], INDENT, INDENT)]
+    header = f"{palette.operator(symbol)}  ({entry['name']})"
+    lines = [header, *_wrap(entry["summary"], INDENT, INDENT)]
     if target is not None:
         lines.append(f"{INDENT}file: {target}")
     if entry.get("warning"):
-        lines += _wrap(f"⚠ Careful: {entry['warning']}", INDENT, INDENT * 2)
+        lines += _warning_lines(entry["warning"], palette)
     return lines
 
 
@@ -284,19 +333,26 @@ def _in_short(chain: Chain, phrases: Sequence[str | None], operators: Data) -> s
 
 
 def _explain_chain(
-    chain: Chain, shell: str, commands: Data, operators: Data, not_covered: Data
+    chain: Chain,
+    shell: str,
+    commands: Data,
+    operators: Data,
+    not_covered: Data,
+    palette: Palette = PLAIN,
 ) -> str:
     """Explain each command and operator in order, then the "In short" line (SPEC.md §3.3.1)."""
     blocks: list[list[str]] = []
     phrases: list[str | None] = []
     for index, command in enumerate(chain.commands):
         if index:
-            blocks.append(_operator_block(chain.joiners[index - 1], operators))
-        lines, phrase = _chain_command_block(command, shell, commands, not_covered)
+            blocks.append(_operator_block(chain.joiners[index - 1], operators, palette=palette))
+        lines, phrase = _chain_command_block(command, shell, commands, not_covered, palette)
         blocks.append(lines)
         phrases.append(phrase)
         for redirect in command.redirects:
-            blocks.append(_operator_block(redirect.operator, operators, redirect.target))
+            blocks.append(
+                _operator_block(redirect.operator, operators, redirect.target, palette)
+            )
 
     summary = _in_short(chain, phrases, operators)
     if summary:
@@ -313,8 +369,9 @@ def explain(
     commands: Data | None = None,
     operators: Data | None = None,
     not_covered: Data | None = None,
+    palette: Palette = PLAIN,
 ) -> str:
-    """Parse typed text and return its explanation.
+    """Parse typed text and return its explanation, colored with `palette` (plain by default).
 
     A single command gets the full format (SPEC.md §3.3). Anything with an
     operator (|, &&, ||, ;, >, >>, <) gets the chain format (SPEC.md §3.3.1).
@@ -332,7 +389,7 @@ def explain(
     if chain is None:
         raise EmptyInputError("there is no command to explain")
     if chain.is_single:
-        return _explain_single(chain.commands[0].tokens, shell, commands)
+        return _explain_single(chain.commands[0].tokens, shell, commands, palette)
     operators = default_operators() if operators is None else operators
     not_covered = default_not_covered() if not_covered is None else not_covered
-    return _explain_chain(chain, shell, commands, operators, not_covered)
+    return _explain_chain(chain, shell, commands, operators, not_covered, palette)

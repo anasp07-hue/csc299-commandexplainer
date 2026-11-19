@@ -8,6 +8,7 @@ import sys
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
+from commandexplain.colors import PLAIN, Palette, colors_enabled
 from commandexplain.formatter import NOT_COVERED_MESSAGES, explain
 from commandexplain.lookup import (
     DataFileError,
@@ -114,11 +115,12 @@ class Session:
         operators: dict[str, dict[str, Any]],
         env: Mapping[str, str],
         shell: str | None = None,
+        palette: Palette = PLAIN,
     ) -> None:
         """Set up a session. If shell is None, the user is asked for it when run() starts.
 
         All data is passed in already loaded, so main() can turn a broken data
-        file into a clean error message (SPEC.md §9).
+        file into a clean error message (SPEC.md §9). `palette` decides colors.
         """
         self.console = console
         self.commands = commands
@@ -126,6 +128,7 @@ class Session:
         self.operators = operators
         self.env = env
         self.shell = shell
+        self.palette = palette
 
     def run(self) -> int:
         """Run until the user quits. Always returns exit code 0."""
@@ -133,7 +136,11 @@ class Session:
         try:
             if self.shell is None:
                 self.shell = choose_shell(
-                    console.ask_or_quit, console.confirm, console.say, self.env
+                    console.ask_or_quit,
+                    console.confirm,
+                    console.say,
+                    self.env,
+                    highlight=self.palette.suggestion,
                 )
             console.say(SHELL_CHOSEN.format(shell=self.shell))
             while True:
@@ -160,7 +167,12 @@ class Session:
         console = self.console
         shell = read_shell_answer(requested)
         if shell is None:
-            shell = ask_shell(console.ask_or_quit, console.confirm, console.say)
+            shell = ask_shell(
+                console.ask_or_quit,
+                console.confirm,
+                console.say,
+                highlight=self.palette.suggestion,
+            )
         self.shell = shell
         console.say(SHELL_SWITCHED.format(shell=shell))
 
@@ -192,6 +204,7 @@ class Session:
                 self.commands,
                 self.operators,
                 self.not_covered,
+                self.palette,
             )
         )
         if any(find_command(c.tokens[0], self.commands) == "exit" for c in fixed):
@@ -252,7 +265,7 @@ class Session:
             return typed if is_inner else None
         guess = suggest(typed, self.commands)
         if guess is not None:
-            if self.console.confirm(f"Did you mean '{guess}'?"):
+            if self.console.confirm(self.palette.suggestion(f"Did you mean '{guess}'?")):
                 return guess
             self.console.say(NOT_FOUND)
             return None
@@ -278,6 +291,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--shell", choices=SHELLS, help="skip the shell question and use this shell"
     )
+    parser.add_argument("--no-color", action="store_true", help="turn off colored output")
     return parser
 
 
@@ -286,9 +300,18 @@ def main(
     input_fn: InputFn = input,
     print_fn: PrintFn = print,
     env: Mapping[str, str] | None = None,
+    isatty: Callable[[], bool] | None = None,
 ) -> int:
-    """Program entry point. Returns the exit code: 0 normally, 1 if the data can't be loaded."""
+    """Program entry point. Returns the exit code: 0 normally, 1 if the data can't be loaded.
+
+    `isatty` says whether output goes to a terminal (default: sys.stdout.isatty).
+    Colors are used only for a terminal, without NO_COLOR or --no-color.
+    """
     args = build_arg_parser().parse_args(argv)
+    if sys.stdout is None and input_fn is input:
+        # Output was closed (commandexplain >&-), so input() can't show its prompt.
+        print("Error: output is closed, so there's nowhere to show explanations.", file=sys.stderr)
+        return 1
     try:
         commands = default_commands()
         not_covered = default_not_covered()
@@ -298,4 +321,10 @@ def main(
         return 1
     console = Console(input_fn, print_fn)
     env = os.environ if env is None else env
-    return Session(console, commands, not_covered, operators, env, shell=args.shell).run()
+    if isatty is None:  # sys.stdout can be None when output is closed (commandexplain >&-)
+        isatty = getattr(sys.stdout, "isatty", None) or (lambda: False)
+    palette = Palette(enabled=colors_enabled(isatty, env, args.no_color))
+    session = Session(
+        console, commands, not_covered, operators, env, shell=args.shell, palette=palette
+    )
+    return session.run()

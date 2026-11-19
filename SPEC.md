@@ -133,7 +133,7 @@ ls -a
     -a   Also show hidden files (the ones whose names start with a dot).
 
 |  (pipe)
-  Takes what the left command prints and feeds it into the right command.
+  Takes the output of the left command (what it would show on screen) and feeds it into the right command.
 
 grep txt
   grep — search text: Searches for text inside files and shows the lines that
@@ -154,11 +154,14 @@ In short: list files, then pass the output to find matching lines.
 - Operator explanations come from `operators.json` (see §5).
 
 ### 3.3.2 Colors
-- Command names are **bold**, flags are cyan, warnings (`⚠ Careful: ...`) are **red**, "Did you mean" prompts are yellow, and operators are magenta.
-- Uses plain ANSI escape codes (no extra library).
+- Command names are **bold**, flags are cyan, warnings (`⚠ Careful: ...`) are **red**, "Did you mean" prompts are yellow (for commands and at the shell question), and operators are magenta.
+  - "Command names" means the name in a single command's title, and the name at the start of each `name — plain name:` line in a chain.
+  - Warning lines are colored after their indent, so the indent stays plain.
+- Uses plain ANSI escape codes (no extra library), in `colors.py` (ADR 0020).
+- Colors are added **after** the text is laid out and wrapped, so color codes never change line widths.
 - Colors are turned **off** automatically when:
-  - output isn't a terminal (`sys.stdout.isatty()` is false), or
-  - the `NO_COLOR` environment variable is set, or
+  - output isn't a terminal (`sys.stdout.isatty()` is false, or can't be checked), or
+  - the `NO_COLOR` environment variable is set to a non-empty value (the no-color.org rule), or
   - the program was started with `--no-color`.
 - The text is the same with or without colors. Colors are never the only way information is shown (warnings still start with `⚠ Careful:`).
 
@@ -262,7 +265,7 @@ Operators get their own key-value file, `commandexplain/data/operators.json`:
 
 ```json
 {
-  "|":  { "name": "pipe", "short": "then pass the output to", "summary": "Takes what the left command prints and feeds it into the right command." },
+  "|":  { "name": "pipe", "short": "then pass the output to", "summary": "Takes the output of the left command (what it would show on screen) and feeds it into the right command." },
   "&&": { "name": "and then", "short": "and if that works,", "summary": "Runs the right command only if the left one worked." },
   "||": { "name": "or else", "short": "and if that fails,", "summary": "Runs the right command only if the left one failed." },
   ";":  { "name": "then", "short": "then", "summary": "Runs the left command, then the right one, no matter what." },
@@ -350,6 +353,7 @@ csc299-commandexplain-cli/
 |---|---|
 | `commands.json` missing or invalid JSON | Print a clear error and exit with code 1 (no traceback) |
 | Ctrl+C / Ctrl+D at any prompt | Print "Goodbye!" and exit with code 0 |
+| Output closed (`commandexplain >&-`) | Print "Error: output is closed, so there's nowhere to show explanations." to stderr and exit with code 1 (ADR 0020) |
 | Unknown flag | Explain the known parts; for the unknown flag, suggest `man <cmd>` |
 | Unsupported shell syntax (`&`, `2>`, `$(...)`, and so on) | "Sorry, I can't explain "2>" yet. Try a simpler version of the command." (ADR 0019) |
 | Third-party tool (`git`, `npm`, and so on) | "'git' isn't a built-in terminal command, so it isn't covered." Uses a small list of known non-builtins, kept in the data |
@@ -471,6 +475,7 @@ Each decision has an ADR in `docs/adr/` with the full reasoning.
 | Phase 3 details | Input-error wording, the `not_covered.json` format, and shell-question conveniences (§3.1, §3.2, §5.2) | 0017 |
 | Chain format and "In short" | Short blocks that keep warnings, plus phrases from `short` fields (§3.3.1, §5.1) | 0018 |
 | Finding operators | A quote-aware scanner instead of `shlex` punctuation; unsupported syntax is named (§3.2) | 0019 |
+| Colors | A `Palette` applied after wrapping; `NO_COLOR` must be non-empty; colors off if the terminal can't be checked (§3.3.2) | 0020 |
 
 ## 13. Open questions
 

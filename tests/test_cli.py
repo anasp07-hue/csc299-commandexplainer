@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from commandexplain import cli, lookup
+from commandexplain.colors import strip_colors
 from commandexplain.cli import PROMPT, main
 from commandexplain.shell import (
     HINT,
@@ -64,14 +65,20 @@ def run_session(
     env: dict[str, str] | None = None,
     argv: list[str] | None = None,
     interrupt_at: int | None = None,
+    tty: bool = False,
 ) -> tuple[int, FakeTerminal]:
-    """Run the program with scripted answers and return (exit code, terminal)."""
+    """Run the program with scripted answers and return (exit code, terminal).
+
+    Output counts as "not a terminal" unless tty=True, so colors stay off and
+    text comparisons work even when pytest itself runs in a terminal.
+    """
     terminal = FakeTerminal(answers, interrupt_at)
     code = main(
         argv or [],
         input_fn=terminal.input,
         print_fn=terminal.print,
         env=ZSH_ENV if env is None else env,
+        isatty=lambda: tty,
     )
     return code, terminal
 
@@ -569,11 +576,15 @@ def test_unknown_segment_drops_whole_chain() -> None:
 
 
 def test_not_covered_segment_is_explained_in_place() -> None:
-    """ls | sort explains ls, and sort's block says it isn't covered, without a separate line."""
-    _, term = run_session(["yes", "ls | sort", "quit"])
+    """ls | git log explains ls, and git's block says it isn't covered, without a separate line.
+
+    Uses git because, as a separate tool, it will never be added to the data.
+    """
+    _, term = run_session(["yes", "ls | git log", "quit"])
+    message = "'git' isn't a built-in terminal command, so it isn't covered."
     assert "ls\n  ls — list:" in term.output
-    assert "'sort' is a real command, but I don't cover it yet." in term.output
-    assert "'sort' is a real command, but I don't cover it yet." not in term.lines
+    assert message in term.output
+    assert message not in term.lines
 
 
 @pytest.mark.parametrize(
@@ -646,3 +657,95 @@ def test_comment_sign_is_unsupported_in_session() -> None:
     _, term = run_session(["yes", "ls # list | grep x", "quit"])
     assert 'Sorry, I can\'t explain "#" yet. Try a simpler version of the command.' in term.lines
     assert "(pipe)" not in term.output
+
+
+# --- Colors (AC 11, SPEC.md §3.3.2) ----------------------------------------
+
+ESC = "\033["
+
+
+def test_ac11_terminal_output_has_colors() -> None:
+    """AC 11: in a terminal, the output contains ANSI color codes."""
+    _, term = run_session(["rm -rf x", "quit"], argv=["--shell", "zsh"], tty=True)
+    assert ESC in term.output
+
+
+@pytest.mark.parametrize(
+    ("env", "argv", "tty"),
+    [
+        ({"SHELL": "/bin/zsh"}, ["--shell", "zsh"], False),  # piped / not a terminal
+        ({"SHELL": "/bin/zsh", "NO_COLOR": "1"}, ["--shell", "zsh"], True),
+        ({"SHELL": "/bin/zsh"}, ["--shell", "zsh", "--no-color"], True),
+    ],
+    ids=["not-a-terminal", "NO_COLOR", "--no-color"],
+)
+def test_ac11_colors_off(env: dict[str, str], argv: list[str], tty: bool) -> None:
+    """AC 11: no color codes when piped, with NO_COLOR set, or with --no-color."""
+    _, term = run_session(["rm -rf x", "sl", "yes", "quit"], env=env, argv=argv, tty=tty)
+    assert ESC not in term.output
+    assert not any(ESC in prompt for prompt in term.prompts)
+
+
+def test_empty_no_color_does_not_turn_colors_off() -> None:
+    """NO_COLOR="" counts as not set (the no-color.org rule)."""
+    env = {"SHELL": "/bin/zsh", "NO_COLOR": ""}
+    _, term = run_session(["ls", "quit"], env=env, argv=["--shell", "zsh"], tty=True)
+    assert ESC in term.output
+
+
+def test_did_you_mean_is_yellow_in_a_terminal() -> None:
+    """The 'Did you mean' question is yellow, for commands and for the shell question."""
+    _, term = run_session(["zhs", "yes", "sl", "yes", "quit"], env={}, tty=True)
+    assert "\033[33mDid you mean zsh?\033[0m (yes/no) " in term.prompts
+    assert "\033[33mDid you mean 'ls'?\033[0m (yes/no) " in term.prompts
+
+
+def test_colored_session_reads_the_same_without_colors() -> None:
+    """With the color codes removed, a colored session matches a plain one exactly."""
+    answers = ["sudo rm -rf x | wc -l > n.txt", "sl -la", "yes", "quit"]
+    _, plain = run_session(answers, argv=["--shell", "zsh"])
+    _, colored = run_session(answers, argv=["--shell", "zsh"], tty=True)
+    assert [strip_colors(t) for t in colored.transcript] == plain.transcript
+
+
+def test_main_uses_real_terminal_and_environment_by_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Without isatty/env arguments, main() checks sys.stdout and os.environ."""
+
+    class FakeStdout:
+        def __init__(self, tty: bool) -> None:
+            self.tty = tty
+
+        def isatty(self) -> bool:
+            return self.tty
+
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    for tty in (True, False):
+        monkeypatch.setattr("sys.stdout", FakeStdout(tty))
+        term = FakeTerminal(["rm x", "quit"])
+        main(["--shell", "zsh"], input_fn=term.input, print_fn=term.print)
+        assert (ESC in term.output) is tty
+
+    monkeypatch.setattr("sys.stdout", FakeStdout(True))
+    monkeypatch.setenv("NO_COLOR", "1")
+    term = FakeTerminal(["rm x", "quit"])
+    main(["--shell", "zsh"], input_fn=term.input, print_fn=term.print)
+    assert ESC not in term.output
+
+
+def test_missing_stdout_means_no_colors(monkeypatch: pytest.MonkeyPatch) -> None:
+    """With stdout closed (sys.stdout is None), colors stay off instead of crashing."""
+    monkeypatch.setattr("sys.stdout", None)
+    term = FakeTerminal(["rm x", "quit"])
+    assert main(["--shell", "zsh"], input_fn=term.input, print_fn=term.print) == 0
+    assert ESC not in term.output
+
+
+def test_closed_output_with_real_input_exits_with_code_1(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """With stdout closed, the real input() can't prompt, so main() stops cleanly."""
+    monkeypatch.setattr("sys.stdout", None)
+    assert main(["--shell", "zsh"]) == 1
+    assert "output is closed" in capsys.readouterr().err

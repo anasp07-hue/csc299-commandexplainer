@@ -7,13 +7,11 @@ import pytest
 from commandexplain.parser import (
     Chain,
     ChainCommand,
-    ParsedInput,
     ParseError,
     Redirect,
     SplitArgs,
     chain_to_text,
     parse_chain,
-    parse_input,
     retype,
     split_flags,
     split_operators,
@@ -24,28 +22,29 @@ LS_FLAGS = {"-l", "-a", "-h", "-R"}
 FIND_FLAGS = {"-name", "-type", "-delete"}
 
 
-# --- tokenize / parse_input ----------------------------------------------
+# --- tokenize and single commands -----------------------------------------
 
 
 @pytest.mark.parametrize("text", ["", "   ", "\t\n"])
 def test_blank_input_gives_none(text: str) -> None:
     """Blank input means there's nothing to explain."""
-    assert parse_input(text) is None
+    assert parse_chain(text) is None
 
 
 def test_command_and_args_are_separated() -> None:
     """The first word is the command, and the rest are its arguments."""
-    assert parse_input("ls -la docs") == ParsedInput(command="ls", args=("-la", "docs"))
+    assert parse_chain("ls -la docs") == Chain((ChainCommand(("ls", "-la", "docs")),))
 
 
 def test_surrounding_whitespace_is_ignored() -> None:
     """Spaces and tabs around and between words don't matter."""
-    assert parse_input("   rm\t -rf   old  ") == ParsedInput(command="rm", args=("-rf", "old"))
+    assert parse_chain("   rm\t -rf   old  ") == Chain((ChainCommand(("rm", "-rf", "old")),))
 
 
 def test_parser_keeps_command_case() -> None:
     """The parser keeps what was typed; lookup is what ignores case."""
-    assert parse_input("LS -la").command == "LS"
+    chain = parse_chain("LS -la")
+    assert chain is not None and chain.commands[0].tokens[0] == "LS"
 
 
 def test_quoted_text_stays_together() -> None:
@@ -56,20 +55,21 @@ def test_quoted_text_stays_together() -> None:
 def test_unclosed_quote_raises_parse_error() -> None:
     """An unclosed quote is reported as a ParseError with the UNCLOSED_QUOTE reason."""
     with pytest.raises(ParseError) as excinfo:
-        parse_input('echo "hi')
+        parse_chain('echo "hi')
     assert excinfo.value.reason == ParseError.UNCLOSED_QUOTE
 
 
 def test_trailing_backslash_has_its_own_reason() -> None:
     """A backslash at the very end is a different problem from a missing quote."""
     with pytest.raises(ParseError) as excinfo:
-        parse_input("echo hi\\")
+        parse_chain("echo hi\\")
     assert excinfo.value.reason == ParseError.TRAILING_BACKSLASH
 
 
 def test_non_ascii_text_is_fine() -> None:
     """Non-English text passes through as an argument."""
-    assert parse_input("echo héllo 日本").args == ("héllo", "日本")
+    chain = parse_chain("echo héllo 日本")
+    assert chain is not None and chain.commands[0].tokens[1:] == ("héllo", "日本")
 
 
 # --- split_flags ----------------------------------------------------------
@@ -160,13 +160,14 @@ def test_parse_error_is_not_a_value_error() -> None:
 
 def test_non_breaking_spaces_count_as_spaces() -> None:
     """Commands copied from web pages often contain non-breaking spaces."""
-    assert parse_input("rm\u00a0-rf\u202fold") == ParsedInput(command="rm", args=("-rf", "old"))
+    chain = parse_chain("rm\u00a0-rf\u202fold")
+    assert chain is not None and chain.commands[0].tokens == ("rm", "-rf", "old")
 
 
 def test_empty_command_name_raises_parse_error() -> None:
     """A quoted empty command name ('' -l) can't be explained."""
     with pytest.raises(ParseError, match="empty") as excinfo:
-        parse_input("'' -l")
+        parse_chain("'' -l")
     assert excinfo.value.reason == ParseError.EMPTY_COMMAND
 
 
