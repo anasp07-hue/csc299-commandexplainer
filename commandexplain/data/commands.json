@@ -1,0 +1,536 @@
+{
+  "cd": {
+    "name": "change directory",
+    "summary": "Moves you into a different folder. Typing cd by itself takes you back to your home folder.",
+    "shells": ["bash", "zsh"],
+    "flags": {
+      "-P": "Go to the real folder that a shortcut (symlink) points to, instead of the shortcut itself.",
+      "-L": "Follow shortcuts (symlinks) as they are. This is the normal behavior."
+    },
+    "common_flags": [],
+    "example": "cd Documents",
+    "warning": null,
+    "shell_notes": {
+      "bash": "In bash 4 or newer, running shopt -s autocd lets you type just a folder's name (without cd) to move into it. The bash that comes with macOS is too old for this.",
+      "zsh": "If the autocd option is turned on, you can type just a folder's name (without cd) to move into it."
+    },
+    "aliases": []
+  },
+  "pwd": {
+    "name": "print working directory",
+    "summary": "Shows the full path of the folder you are in right now.",
+    "shells": ["bash", "zsh"],
+    "flags": {
+      "-P": "Show the real location, with any shortcuts (symlinks) worked out.",
+      "-L": "Show the path the way you got there, shortcuts included. This is the normal behavior."
+    },
+    "common_flags": [],
+    "example": "pwd",
+    "warning": null,
+    "shell_notes": {},
+    "aliases": []
+  },
+  "ls": {
+    "name": "list",
+    "summary": "Shows the files and folders in the current folder.",
+    "shells": ["bash", "zsh"],
+    "flags": {
+      "-l": "Show the list in long form, with size, date, owner, and permissions.",
+      "-a": "Also show hidden files (the ones whose names start with a dot).",
+      "-A": "Show hidden files, but leave out the special . and .. entries.",
+      "-h": "Show file sizes in easy units like K, M, and G (use it together with -l).",
+      "-t": "Sort by time changed, newest first.",
+      "-r": "Reverse the order of the list.",
+      "-R": "Also list everything inside every sub-folder.",
+      "-1": "Show one name per line.",
+      "-F": "Add a symbol after each name to show its type, like / for folders."
+    },
+    "common_flags": ["-l", "-a", "-h"],
+    "example": "ls -la",
+    "warning": null,
+    "shell_notes": {},
+    "aliases": []
+  },
+  "mkdir": {
+    "name": "make directory",
+    "summary": "Creates a new folder.",
+    "shells": ["bash", "zsh"],
+    "flags": {
+      "-p": "Also create any missing folders along the path, and don't complain if the folder already exists.",
+      "-v": "Print a message for each folder that gets created."
+    },
+    "common_flags": ["-p"],
+    "example": "mkdir projects",
+    "warning": null,
+    "shell_notes": {},
+    "aliases": []
+  },
+  "rmdir": {
+    "name": "remove directory",
+    "summary": "Deletes an empty folder. It refuses to delete a folder that still has something inside it.",
+    "shells": ["bash", "zsh"],
+    "flags": {
+      "-p": "Also delete the folders above it in the path, as long as they are empty too."
+    },
+    "common_flags": [],
+    "example": "rmdir old-folder",
+    "warning": null,
+    "shell_notes": {},
+    "aliases": []
+  },
+  "touch": {
+    "name": "create an empty file",
+    "summary": "Creates a new, empty file. If the file already exists, it just updates the file's last-changed time.",
+    "shells": ["bash", "zsh"],
+    "flags": {
+      "-c": "Don't create the file if it doesn't already exist.",
+      "-a": "Only update the time the file was last read.",
+      "-m": "Only update the time the file was last changed."
+    },
+    "common_flags": ["-c"],
+    "example": "touch notes.txt",
+    "warning": null,
+    "shell_notes": {},
+    "aliases": []
+  },
+  "cp": {
+    "name": "copy",
+    "summary": "Makes a copy of a file or folder. Write the original first and the place to copy it to second.",
+    "shells": ["bash", "zsh"],
+    "flags": {
+      "-R": "Copy a folder and everything inside it. On macOS, a slash at the end of the folder name (photos/) copies only what's inside the folder, not the folder itself.",
+      "-r": "Copy a folder and everything inside it. On macOS, use -R instead, because -r can behave differently there.",
+      "-i": "Ask before replacing a file that already exists.",
+      "-n": "Never replace a file that already exists.",
+      "-v": "Print the name of each file as it is copied.",
+      "-p": "Keep the original file's dates and permissions on the copy."
+    },
+    "common_flags": ["-R", "-i", "-v"],
+    "example": "cp notes.txt notes-backup.txt",
+    "warning": "If a file with the same name is already where you are copying to, it gets replaced without asking. Use -i to be asked first.",
+    "shell_notes": {},
+    "aliases": []
+  },
+  "mv": {
+    "name": "move",
+    "summary": "Moves a file or folder to a new place. It is also how you rename things.",
+    "shells": ["bash", "zsh"],
+    "flags": {
+      "-i": "Ask before replacing a file that already exists.",
+      "-n": "Never replace a file that already exists.",
+      "-v": "Print the name of each file as it is moved.",
+      "-f": "Replace existing files without asking."
+    },
+    "common_flags": ["-i", "-v"],
+    "example": "mv draft.txt final.txt",
+    "warning": "If a file with the new name already exists, it gets replaced without asking. Use -i to be asked first.",
+    "shell_notes": {},
+    "aliases": []
+  },
+  "rm": {
+    "name": "remove",
+    "summary": "Deletes files. They do not go to the Trash.",
+    "shells": ["bash", "zsh"],
+    "flags": {
+      "-r": "Delete folders and everything inside them.",
+      "-R": "Same as -r: delete folders and everything inside them.",
+      "-f": "Force: don't ask before deleting, and don't complain if a file doesn't exist.",
+      "-i": "Ask 'are you sure?' before deleting each file.",
+      "-d": "Also allow deleting empty folders.",
+      "-v": "Print the name of each file as it is deleted."
+    },
+    "common_flags": ["-r", "-f", "-i"],
+    "example": "rm notes.txt",
+    "warning": "This deletes files permanently. There is no undo.",
+    "shell_notes": {
+      "zsh": "zsh asks you to confirm before running rm with * (everything in a folder). bash does not ask."
+    },
+    "aliases": []
+  },
+  "ln": {
+    "name": "link",
+    "summary": "Creates a link, which is a shortcut that points to another file or folder. Write the real file first and the new shortcut's name second.",
+    "shells": ["bash", "zsh"],
+    "flags": {
+      "-s": "Make a symbolic link, which works like a normal shortcut. Without -s, ln makes a hard link, which is a second name for the same file.",
+      "-f": "Replace anything that already exists where the link is being made.",
+      "-v": "Print a message for each link that gets created."
+    },
+    "common_flags": ["-s"],
+    "example": "ln -s ~/Documents/project project-shortcut",
+    "warning": null,
+    "shell_notes": {},
+    "aliases": []
+  },
+  "cat": {
+    "name": "concatenate",
+    "summary": "Prints everything in a file to the screen. It can also join several files together, one after another.",
+    "shells": ["bash", "zsh"],
+    "flags": {
+      "-n": "Number every line.",
+      "-b": "Number only the lines that aren't empty.",
+      "-s": "Squeeze several blank lines in a row down to one."
+    },
+    "common_flags": ["-n"],
+    "example": "cat notes.txt",
+    "warning": null,
+    "shell_notes": {},
+    "aliases": []
+  },
+  "less": {
+    "name": "page through a file",
+    "summary": "Shows a file one screen at a time so you can scroll through it. Press space for the next page, / to search, and q to quit.",
+    "shells": ["bash", "zsh"],
+    "flags": {
+      "-N": "Show line numbers.",
+      "-S": "Don't wrap long lines. Scroll sideways to see the rest instead.",
+      "-i": "Make searches ignore uppercase and lowercase, unless what you search for has uppercase letters.",
+      "-F": "Quit right away if the whole file fits on one screen."
+    },
+    "common_flags": ["-N", "-S"],
+    "example": "less notes.txt",
+    "warning": null,
+    "shell_notes": {},
+    "aliases": []
+  },
+  "head": {
+    "name": "show the start of a file",
+    "summary": "Shows the first 10 lines of a file.",
+    "shells": ["bash", "zsh"],
+    "flags": {
+      "-n": "Choose how many lines to show. For example, head -n 5 shows the first 5 lines.",
+      "-c": "Show a number of bytes (about the same as characters) instead of lines."
+    },
+    "common_flags": ["-n"],
+    "example": "head -n 5 notes.txt",
+    "warning": null,
+    "shell_notes": {},
+    "aliases": []
+  },
+  "tail": {
+    "name": "show the end of a file",
+    "summary": "Shows the last 10 lines of a file.",
+    "shells": ["bash", "zsh"],
+    "flags": {
+      "-n": "Choose how many lines to show. For example, tail -n 20 shows the last 20 lines.",
+      "-f": "Keep watching the file and show new lines as they get added. Press Ctrl+C to stop.",
+      "-F": "Like -f, but keeps watching even if the file gets renamed or replaced.",
+      "-c": "Show a number of bytes (about the same as characters) instead of lines."
+    },
+    "common_flags": ["-n", "-f"],
+    "example": "tail -f app.log",
+    "warning": null,
+    "shell_notes": {},
+    "aliases": []
+  },
+  "wc": {
+    "name": "word count",
+    "summary": "Counts the lines, words, and bytes (about the same as characters) in a file.",
+    "shells": ["bash", "zsh"],
+    "flags": {
+      "-l": "Only count lines.",
+      "-w": "Only count words.",
+      "-c": "Only count bytes.",
+      "-m": "Only count characters."
+    },
+    "common_flags": ["-l", "-w"],
+    "example": "wc -l notes.txt",
+    "warning": null,
+    "shell_notes": {},
+    "aliases": []
+  },
+  "grep": {
+    "name": "search text",
+    "summary": "Searches for text inside files and shows the lines that match.",
+    "shells": ["bash", "zsh"],
+    "flags": {
+      "-i": "Ignore the difference between uppercase and lowercase letters.",
+      "-r": "Search every file in a folder and all of its sub-folders.",
+      "-n": "Show the line number of each match.",
+      "-v": "Show the lines that do NOT match instead.",
+      "-l": "Only show the names of files that have a match.",
+      "-c": "Only show how many lines matched.",
+      "-w": "Only match whole words, so 'cat' won't match 'category'.",
+      "-o": "Only show the part of the line that matched, not the whole line.",
+      "-E": "Turn on extra search patterns, like cat|dog to find lines with either word."
+    },
+    "common_flags": ["-i", "-r", "-n"],
+    "example": "grep -i hello notes.txt",
+    "warning": null,
+    "shell_notes": {},
+    "aliases": []
+  },
+  "find": {
+    "name": "find files",
+    "summary": "Searches a folder and all of its sub-folders for files and folders by name, type, size, or date.",
+    "shells": ["bash", "zsh"],
+    "flags": {
+      "-name": "Find things whose name matches a pattern. For example, -name \"*.txt\" finds all .txt files.",
+      "-iname": "Like -name, but ignores uppercase and lowercase.",
+      "-type": "Only find one kind of thing: f for files, d for folders.",
+      "-size": "Find files by size. For example, -size +10M means bigger than 10 megabytes.",
+      "-mtime": "Find files by how many days ago they were changed. For example, -mtime -7 means changed in the last 7 days.",
+      "-maxdepth": "Limit how many levels of sub-folders to search.",
+      "-exec": "Run another command on each thing that is found.",
+      "-delete": "Delete everything that is found. Careful: there is no undo."
+    },
+    "common_flags": ["-name", "-type"],
+    "example": "find . -name \"*.txt\"",
+    "warning": "With -delete or -exec, find can delete or change every file it finds. Run it without them first to check what matches.",
+    "shell_notes": {},
+    "aliases": []
+  },
+  "which": {
+    "name": "find a command's location",
+    "summary": "Shows where the program for a command is stored on your computer.",
+    "shells": ["bash", "zsh"],
+    "flags": {
+      "-a": "Show every match, not just the first one."
+    },
+    "common_flags": ["-a"],
+    "example": "which python3",
+    "warning": null,
+    "shell_notes": {
+      "bash": "In bash, which doesn't know about your aliases. Use type instead to see those too.",
+      "zsh": "In zsh, which also tells you if the name is an alias or a function."
+    },
+    "aliases": []
+  },
+  "chmod": {
+    "name": "change mode",
+    "summary": "Changes who is allowed to read, change, or run a file. For example, chmod +x script.sh lets you run script.sh as a program.",
+    "shells": ["bash", "zsh"],
+    "flags": {
+      "-R": "Change the permissions of a folder and everything inside it.",
+      "-v": "Print a message for each file that gets changed."
+    },
+    "common_flags": ["-R"],
+    "example": "chmod +x script.sh",
+    "warning": "Opening permissions up too far (like chmod 777) lets anyone on the computer change or run the file.",
+    "shell_notes": {},
+    "aliases": []
+  },
+  "chown": {
+    "name": "change owner",
+    "summary": "Changes which user owns a file. You usually need sudo to use it.",
+    "shells": ["bash", "zsh"],
+    "flags": {
+      "-R": "Change the owner of a folder and everything inside it.",
+      "-v": "Print a message for each file that gets changed."
+    },
+    "common_flags": ["-R"],
+    "example": "sudo chown alex notes.txt",
+    "warning": "Changing the owner of system files can stop programs from working. Double-check the path, especially with -R.",
+    "shell_notes": {},
+    "aliases": []
+  },
+  "sudo": {
+    "name": "superuser do",
+    "summary": "Runs a command as the administrator (root), who is allowed to change anything on the computer. It asks for your password first.",
+    "shells": ["bash", "zsh"],
+    "flags": {
+      "-u": "Run the command as a different user you name, instead of the administrator.",
+      "-i": "Start an administrator session, so every command you type runs as root until you type exit.",
+      "-k": "Forget your password right away, so the next sudo asks for it again.",
+      "-l": "List what you are allowed to run with sudo."
+    },
+    "common_flags": ["-u", "-i"],
+    "example": "sudo mkdir /opt/tools",
+    "warning": "Commands run with sudo can change or delete anything, including files your computer needs to work. Only use it when you understand the command.",
+    "shell_notes": {},
+    "aliases": []
+  },
+  "ps": {
+    "name": "process status",
+    "summary": "Shows programs (processes) that are running, each with a number called a PID that you can use with kill. By itself it only shows the ones started from this terminal window.",
+    "shells": ["bash", "zsh"],
+    "flags": {
+      "-e": "Show every process on the computer, including other users' and background ones.",
+      "-f": "Show more details, like the full command and when it started.",
+      "-u": "Only show processes that belong to the user you name."
+    },
+    "common_flags": ["-e", "-f"],
+    "example": "ps -ef",
+    "warning": null,
+    "shell_notes": {},
+    "aliases": []
+  },
+  "kill": {
+    "name": "stop a program",
+    "summary": "Stops a running program by its process number (PID). Use ps or top to find the PID.",
+    "shells": ["bash", "zsh"],
+    "flags": {
+      "-9": "Force the program to stop immediately, without letting it clean up. Only use this if a normal kill doesn't work.",
+      "-l": "List the names of all the signals kill can send.",
+      "-s": "Choose which signal to send by its name. For example, -s TERM politely asks the program to stop."
+    },
+    "common_flags": ["-9", "-l"],
+    "example": "kill 12345",
+    "warning": "The program stops and may lose any unsaved work.",
+    "shell_notes": {},
+    "aliases": []
+  },
+  "top": {
+    "name": "live process monitor",
+    "summary": "Shows a live, updating list of running programs, how hard each one is making the computer work (CPU), and how much memory it uses. Press q to quit.",
+    "shells": ["bash", "zsh"],
+    "flags": {
+      "-o": "Sort the list by a column, like CPU use. The column names are different on each system: -o cpu on macOS, -o %CPU on Linux."
+    },
+    "common_flags": [],
+    "example": "top",
+    "warning": null,
+    "shell_notes": {},
+    "aliases": []
+  },
+  "echo": {
+    "name": "print text",
+    "summary": "Prints the text you give it back to the screen. It can also show what a named setting (a variable) holds, like echo $HOME for your home folder.",
+    "shells": ["bash", "zsh"],
+    "flags": {
+      "-n": "Don't move to a new line at the end.",
+      "-e": "Understand special codes like \\n (new line) and \\t (tab)."
+    },
+    "common_flags": ["-n"],
+    "example": "echo \"Hello, world\"",
+    "warning": null,
+    "shell_notes": {
+      "zsh": "In zsh, echo already understands codes like \\n without -e. In bash, you need -e."
+    },
+    "aliases": []
+  },
+  "clear": {
+    "name": "clear the screen",
+    "summary": "Wipes the terminal screen so you can start with a clean view. The shortcut Ctrl+L does the same thing.",
+    "shells": ["bash", "zsh"],
+    "flags": {},
+    "common_flags": [],
+    "example": "clear",
+    "warning": null,
+    "shell_notes": {},
+    "aliases": []
+  },
+  "history": {
+    "name": "command history",
+    "summary": "Shows a numbered list of commands you have typed before. Type ! and a number (like !42) to run one of them again.",
+    "shells": ["bash", "zsh"],
+    "flags": {
+      "-c": "(bash only) Clear the whole history list.",
+      "-d": "(bash only) Delete one entry by its number."
+    },
+    "common_flags": [],
+    "example": "history",
+    "warning": null,
+    "shell_notes": {
+      "zsh": "zsh only shows your most recent commands by default. Type history 1 to see all of them."
+    },
+    "aliases": []
+  },
+  "man": {
+    "name": "manual",
+    "summary": "Opens the manual page for a command, which explains everything it can do. Scroll with the arrow keys and press q to quit.",
+    "shells": ["bash", "zsh"],
+    "flags": {
+      "-k": "Search all the manual pages for a word. Handy when you don't know a command's name.",
+      "-f": "Show a one-line description of a command."
+    },
+    "common_flags": ["-k"],
+    "example": "man ls",
+    "warning": null,
+    "shell_notes": {},
+    "aliases": []
+  },
+  "alias": {
+    "name": "make a shortcut",
+    "summary": "Creates a short name for a longer command, like alias ll='ls -l'. Typing alias by itself lists all your shortcuts.",
+    "shells": ["bash", "zsh"],
+    "flags": {},
+    "common_flags": [],
+    "example": "alias ll='ls -l'",
+    "warning": null,
+    "shell_notes": {
+      "bash": "Aliases go away when you close the terminal. To keep one, add the line to your ~/.bashrc file (on macOS, ~/.bash_profile).",
+      "zsh": "Aliases go away when you close the terminal. To keep one, add the line to your ~/.zshrc file."
+    },
+    "aliases": []
+  },
+  "export": {
+    "name": "share a variable",
+    "summary": "Creates a named setting (a variable) that programs started from this terminal can read, like export EDITOR=nano. It only lasts until you close the terminal.",
+    "shells": ["bash", "zsh"],
+    "flags": {
+      "-p": "List all the named settings (variables) that programs can read.",
+      "-n": "(bash only) Stop sharing a variable with programs, but keep it in this shell."
+    },
+    "common_flags": ["-p"],
+    "example": "export EDITOR=nano",
+    "warning": null,
+    "shell_notes": {
+      "bash": "To keep it after closing the terminal, add the line to your ~/.bashrc file (on macOS, ~/.bash_profile).",
+      "zsh": "To keep it after closing the terminal, add the line to your ~/.zshrc file."
+    },
+    "aliases": []
+  },
+  "source": {
+    "name": "run a file's commands",
+    "summary": "Runs the commands from a file inside your current terminal. It is often used to reload your settings after you edit them.",
+    "shells": ["bash", "zsh"],
+    "flags": {},
+    "common_flags": [],
+    "example": "source ~/.zshrc",
+    "warning": null,
+    "shell_notes": {
+      "bash": "To reload your bash settings, run source ~/.bashrc. Typing a single dot (. ~/.bashrc) does the same thing.",
+      "zsh": "To reload your zsh settings, run source ~/.zshrc. Typing a single dot (. ~/.zshrc) does the same thing."
+    },
+    "aliases": ["."]
+  },
+  "exit": {
+    "name": "leave the shell",
+    "summary": "Closes the shell you are in, which usually closes the terminal window or tab.",
+    "shells": ["bash", "zsh"],
+    "flags": {},
+    "common_flags": [],
+    "example": "exit",
+    "warning": null,
+    "shell_notes": {},
+    "aliases": []
+  },
+  "shopt": {
+    "name": "shell options",
+    "summary": "Turns bash settings on or off, or shows which ones are on.",
+    "shells": ["bash"],
+    "flags": {
+      "-s": "Turn a setting on.",
+      "-u": "Turn a setting off.",
+      "-p": "List every setting and whether it is on or off."
+    },
+    "common_flags": ["-s", "-u"],
+    "example": "shopt -s cdspell",
+    "warning": null,
+    "shell_notes": {},
+    "aliases": []
+  },
+  "setopt": {
+    "name": "set option",
+    "summary": "Turns on a zsh setting that changes how the shell behaves. Typing setopt by itself lists the settings you have changed.",
+    "shells": ["zsh"],
+    "flags": {},
+    "common_flags": [],
+    "example": "setopt autocd",
+    "warning": null,
+    "shell_notes": {},
+    "aliases": []
+  },
+  "unsetopt": {
+    "name": "unset option",
+    "summary": "Turns off a zsh setting. It is the opposite of setopt.",
+    "shells": ["zsh"],
+    "flags": {},
+    "common_flags": [],
+    "example": "unsetopt beep",
+    "warning": null,
+    "shell_notes": {},
+    "aliases": []
+  }
+}

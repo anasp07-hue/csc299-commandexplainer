@@ -66,7 +66,9 @@ start
   2. Split the tokens into **segments** at these operators: `|`, `&&`, `||`, `;`, `>`, `>>`, `<`. For `>`, `>>`, and `<`, the next token is a filename, not a command.
   3. In each segment, the first token is the **command** and the remaining tokens are **arguments**.
   4. A token that starts with `--` is one long flag (`--all`).
-  5. A token that starts with a single `-` and has more than one letter is split into separate short flags: `-rf` becomes `-r` and `-f`.
+  5. A token that starts with a single `-` and has more than one character is handled in two steps (ADR 0007):
+     - **Whole token first.** If the whole token is a key in that command's `flags`, it is one flag. For example, `find`'s `-name` stays `-name`.
+     - **Otherwise split.** The token is split into separate short flags: `-rf` becomes `-r` and `-f`.
   6. A token that doesn't start with `-` (a filename, path, and so on) is listed as "an argument you gave the command" and isn't explained further.
 - Empty input re-prompts silently.
 - An unclosed quote (`echo "hi`) prints `It looks like a quote (") is missing its partner. Please re-enter it.` and re-prompts.
@@ -88,7 +90,7 @@ ls  —  list
 Rules:
 - First line: the command and its plain-English name (for example "change directory").
 - One or two sentences of summary, written for someone who has never used a terminal.
-- If the user typed flags, show **only those flags**. If they typed no flags, show the 3–5 most common flags under a "Common options" heading.
+- If the user typed flags, show **only those flags**. If they typed no flags, show the command's `common_flags` under a "Common options" heading. That is at most 5 flags, and only ones beginners actually use. If the command has no common flags, leave the heading out (ADR 0008).
 - If a flag isn't in the data: `-z   I don't have an explanation for this option. Try "man ls" for the full manual.`
 - A **warning** line for dangerous commands or flags (for example `rm -rf`, `sudo`, `chmod 777`): `⚠ Careful: this deletes files permanently. There is no trash/undo.`
 - A shell-specific note when one exists for the selected shell.
@@ -135,8 +137,10 @@ In short: list all files, then keep only the lines containing "txt".
 
 ## 4. Spelling suggestions ("Did you mean")
 
-- Uses Python's standard library: `difflib.get_close_matches(word, all_command_names, n=1, cutoff=0.75)`.
-- Matching runs against all command names, plus aliases (see §5).
+- Matching runs against all command names, plus aliases (see §5). It finds the suggestion in two steps, using only the standard library (ADR 0006):
+  1. **One edit away.** Find every name that is exactly one edit from the input. An edit is one letter added, removed, or changed, or two neighboring letters swapped (`sl` → `ls`, `cta` → `cat`, `cdd` → `cd`). If more than one name qualifies, pick the one with the highest `difflib.SequenceMatcher` ratio, breaking ties alphabetically.
+  2. **Otherwise, close enough.** Use `difflib.get_close_matches(word, names, n=1, cutoff=0.75)`. This catches longer typos like `mkdri` → `mkdir`.
+- Input shorter than 2 characters never gets a suggestion, because almost every short name is one edit away from it.
 - Only the **single best** match is suggested.
 - The yes/no prompt accepts `y`, `yes`, `n`, `no`, ignoring case. Anything else re-asks.
 - **yes**: explain the suggested command, keeping any flags the user typed (`sl -la` becomes `ls -la`).
@@ -199,8 +203,8 @@ All command knowledge lives in one data file, `commandexplain/data/commands.json
 | `name` | str | yes | What the command stands for, in plain words |
 | `summary` | str | yes | 1–2 sentence beginner explanation |
 | `shells` | list[str] | yes | Which shells have it: `"bash"`, `"zsh"`, or both |
-| `flags` | dict[str, str] | yes (may be `{}`) | Flag → plain-English explanation |
-| `common_flags` | list[str] | yes (may be `[]`) | Flags to show when the user typed none; each must be a key in `flags` |
+| `flags` | dict[str, str] | yes (may be `{}`) | Flag → plain-English explanation. Keys look like `-r`, `-9`, `-name`, or `--all` |
+| `common_flags` | list[str] | yes (may be `[]`) | Up to 5 flags beginners actually use, shown when the user typed none; each must be a key in `flags` (ADR 0008) |
 | `example` | str | yes | A typical usage |
 | `warning` | str or null | no | Shown for dangerous commands |
 | `shell_notes` | dict[str, str] | no | Extra note per shell, for example `{"zsh": "..."}` |
@@ -316,7 +320,7 @@ Deliverables:
 - `tests/test_data.py` checks that:
   - every entry has all required fields with the right types,
   - `shells` only contains `"bash"` or `"zsh"`,
-  - every item in `common_flags` is a key in `flags`,
+  - every item in `common_flags` is a key in `flags`, and there are at most 5 of them,
   - aliases don't clash with real command names or with each other,
   - summaries are at most 2 sentences (to keep things simple for beginners).
 
@@ -327,7 +331,7 @@ Done when: acceptance criterion 12 passes. Opening Python and running `load_comm
 
 Deliverables:
 - `parser.py`: splits one command into command / flags / arguments, including splitting `-rf` into `-r -f` (§3.2 steps 3–6, without operators yet).
-- `lookup.py`: `find_command(name)` with exact match, case-insensitive match, and alias lookup. `suggest(name)` returns the best `difflib` match or `None` (§4).
+- `lookup.py`: `find_command(name)` with exact match, case-insensitive match, and alias lookup. `suggest(name)` returns the best match using the two-step rule in §4, or `None`.
 - `formatter.py`: builds the explanation text as described in §3.3: typed flags or common flags, unknown flag message, warning, shell note, example. Plain text only.
 - Tests for parser, lookup, and formatter.
 
@@ -384,6 +388,9 @@ Each decision has an ADR in `docs/adr/` with the full reasoning.
 | Shell selection | Auto-detect from `$SHELL`, then confirm (§3.1) | 0003 |
 | Explaining arguments | No. v1 covers commands and flags only | 0004 |
 | Colors | Yes, ANSI, turned off automatically when not a terminal (§3.3.2) | 0005 |
+| Spelling suggestions | One-edit check first, then difflib ≥ 0.75 (§4) | 0006 |
+| Multi-letter flags (`-name`) | Match the whole token first, split only if unknown (§3.2) | 0007 |
+| Common flags | Up to 5, only beginner-useful ones, may be empty (§3.3) | 0008 |
 
 ## 13. Open questions
 

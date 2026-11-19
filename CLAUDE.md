@@ -40,7 +40,7 @@ CommandExplain is a Python CLI that explains bash/zsh terminal commands in simpl
 
 - **Python 3.10+, standard library only at runtime.** Don't add a dependency without asking. `pytest` is allowed as a dev dependency.
 - Use type hints on all functions and give each function a short docstring.
-- Follow PEP 8 and keep functions small and focused.
+- Follow PEP 8, with lines up to 99 characters (PEP 8 allows teams to agree on that). Keep functions small and focused.
 - Command knowledge lives in the JSON key-value data files (`commandexplain/data/`), never hardcoded in Python.
 - Explanations must stay simple and beginner-friendly (see SPEC.md §3.3).
 - Keep I/O injectable (`input_fn`, `print_fn`) so the CLI stays testable.
