@@ -96,6 +96,12 @@ def load_not_covered(path: Path | None = None) -> dict[str, dict[str, Any]]:
 
 
 @lru_cache(maxsize=1)
+def default_operators() -> dict[str, dict[str, Any]]:
+    """The shipped operator data, read from disk only once per run (read-only)."""
+    return load_operators()
+
+
+@lru_cache(maxsize=1)
 def default_not_covered() -> dict[str, dict[str, Any]]:
     """The shipped not-covered list, read from disk only once per run (read-only)."""
     return load_not_covered()

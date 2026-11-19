@@ -372,7 +372,7 @@ def test_quoted_arguments_survive_a_spelling_fix() -> None:
 # --- Data errors (SPEC.md §9) --------------------------------------------
 
 
-@pytest.mark.parametrize("setting", ["COMMANDS_FILE", "NOT_COVERED_FILE"])
+@pytest.mark.parametrize("setting", ["COMMANDS_FILE", "NOT_COVERED_FILE", "OPERATORS_FILE"])
 @pytest.mark.parametrize("content", ["{not json", None])
 def test_broken_data_file_exits_with_code_1(
     tmp_path: Path,
@@ -386,13 +386,14 @@ def test_broken_data_file_exits_with_code_1(
     if content is not None:
         bad.write_text(content, encoding="utf-8")
     monkeypatch.setattr(lookup, setting, bad)
-    lookup.default_commands.cache_clear()
-    lookup.default_not_covered.cache_clear()
+    caches = (lookup.default_commands, lookup.default_not_covered, lookup.default_operators)
+    for cache in caches:
+        cache.cache_clear()
     try:
         code, term = run_session(["yes", "ls"])
     finally:
-        lookup.default_commands.cache_clear()
-        lookup.default_not_covered.cache_clear()
+        for cache in caches:
+            cache.cache_clear()
     assert code == 1
     assert "Error: Data file" in capsys.readouterr().err
     assert term.prompts == []
@@ -408,32 +409,40 @@ def test_module_runs_with_python_m(monkeypatch: pytest.MonkeyPatch) -> None:
     assert excinfo.value.code == 0
 
 
-
 # --- Phase 3 review fixes -------------------------------------------------
 
-# (answers that reach the prompt, description) for every kind of prompt.
+# (answers that reach the prompt, text the last prompt must contain, description).
 PROMPT_PATHS = [
-    ([], "detected-shell question"),
-    (["no"], "manual shell question"),
-    (["yes"], "command prompt"),
-    (["yes", "sl"], "Did you mean question"),
-    (["yes", "shopt"], "other-shell question"),
-    (["yes", "shell"], "shell switch question"),
+    ([], "Looks like you're using zsh", "detected-shell question"),
+    (["no"], MANUAL_PROMPT, "manual shell question"),
+    (["yes"], PROMPT, "command prompt"),
+    (["yes", "sl"], "Did you mean 'ls'?", "Did you mean question"),
+    (["yes", "shopt"], "doesn't work in zsh", "other-shell question"),
+    (["yes", "shell"], MANUAL_PROMPT, "shell switch question"),
+    (["yes", "sl | grpe x", "yes"], "Did you mean 'grep'?", "second suggestion in a chain"),
+    (["yes", "ls ; shopt -s x"], "doesn't work in zsh", "other-shell question in a chain"),
 ]
+PROMPT_IDS = [where for _, _, where in PROMPT_PATHS]
 
 
-@pytest.mark.parametrize(("answers", "where"), PROMPT_PATHS, ids=[w for _, w in PROMPT_PATHS])
-def test_ctrl_c_at_every_prompt_exits_cleanly(answers: list[str], where: str) -> None:
+@pytest.mark.parametrize(("answers", "expected", "where"), PROMPT_PATHS, ids=PROMPT_IDS)
+def test_ctrl_c_at_every_prompt_exits_cleanly(
+    answers: list[str], expected: str, where: str
+) -> None:
     """Ctrl+C at any prompt says goodbye with exit code 0 and no traceback."""
     code, term = run_session(answers, interrupt_at=len(answers))
+    assert expected in term.prompts[-1], f"{where}: never reached that prompt"
     assert code == 0, where
     assert term.lines[-1] == "Goodbye!"
 
 
-@pytest.mark.parametrize(("answers", "where"), PROMPT_PATHS, ids=[w for _, w in PROMPT_PATHS])
-def test_ctrl_d_at_every_prompt_exits_cleanly(answers: list[str], where: str) -> None:
+@pytest.mark.parametrize(("answers", "expected", "where"), PROMPT_PATHS, ids=PROMPT_IDS)
+def test_ctrl_d_at_every_prompt_exits_cleanly(
+    answers: list[str], expected: str, where: str
+) -> None:
     """Ctrl+D (end of input) at any prompt says goodbye with exit code 0."""
     code, term = run_session(answers)
+    assert expected in term.prompts[-1], f"{where}: never reached that prompt"
     assert code == 0, where
     assert term.lines[-1] == "Goodbye!"
 
@@ -517,3 +526,123 @@ def test_shell_with_unknown_name_asks() -> None:
     _, term = run_session(["shell fish", "zsh", "quit"], argv=["--shell", "bash"])
     assert MANUAL_PROMPT in term.prompts
     assert "Switched to zsh." in term.lines
+
+
+# --- Chains (Phase 4) ------------------------------------------------------
+
+
+def test_ac9_pipe_in_session() -> None:
+    """AC 9: a pipe is explained part by part in a real session."""
+    _, term = run_session(["yes", "ls -a | grep txt", "quit"])
+    assert "|  (pipe)" in term.output
+    assert "In short: list files, then pass the output to find matching lines." in term.output
+
+
+def test_ac10_typo_in_chain_is_asked_about_first() -> None:
+    """AC 10: sl | grep x asks "Did you mean 'ls'?" before explaining the chain."""
+    _, term = run_session(["yes", "sl | grep x", "yes", "quit"])
+    assert "Did you mean 'ls'? (yes/no) " in term.prompts
+    assert "ls\n  ls — list:" in term.output
+    assert "|  (pipe)" in term.output
+
+
+def test_typos_in_several_segments_are_each_asked() -> None:
+    """Each segment gets its own suggestion."""
+    _, term = run_session(["yes", "sl | grpe x", "yes", "yes", "quit"])
+    assert "Did you mean 'ls'? (yes/no) " in term.prompts
+    assert "Did you mean 'grep'? (yes/no) " in term.prompts
+    assert "grep x\n  grep — search text:" in term.output
+
+
+def test_no_to_any_suggestion_drops_whole_chain() -> None:
+    """Saying no to one suggestion drops the whole input (SPEC.md §3.3.1)."""
+    _, term = run_session(["yes", "ls | grpe x", "no", "quit"])
+    assert "Command not found. Please re-enter it." in term.lines
+    assert "(pipe)" not in term.output
+
+
+def test_unknown_segment_drops_whole_chain() -> None:
+    """A segment with no suggestion drops the input with the 'don't know' message."""
+    _, term = run_session(["yes", "ls | xyzzy", "quit"])
+    assert "Sorry, I don't know 'xyzzy'. Check the spelling and try again." in term.lines
+    assert "(pipe)" not in term.output
+
+
+def test_not_covered_segment_is_explained_in_place() -> None:
+    """ls | sort explains ls, and sort's block says it isn't covered, without a separate line."""
+    _, term = run_session(["yes", "ls | sort", "quit"])
+    assert "ls\n  ls — list:" in term.output
+    assert "'sort' is a real command, but I don't cover it yet." in term.output
+    assert "'sort' is a real command, but I don't cover it yet." not in term.lines
+
+
+@pytest.mark.parametrize(
+    ("typed", "message"),
+    [
+        ("| grep x", 'Something is missing before "|". Please re-enter it.'),
+        ("ls &&", 'Something is missing after "&&". Please re-enter it.'),
+        ("ls 2>/dev/null", 'Sorry, I can\'t explain "2>" yet. Try a simpler version of the '
+                           "command."),
+        ("sleep 5 &", 'Sorry, I can\'t explain "&" yet. Try a simpler version of the command.'),
+    ],
+)
+def test_chain_errors_have_messages(typed: str, message: str) -> None:
+    """Missing sides and unsupported syntax get their own messages (§3.2, ADR 0019)."""
+    _, term = run_session(["yes", typed, "quit"])
+    assert message in term.lines
+    assert term.prompts[-1] == PROMPT
+
+
+def test_other_shell_command_in_chain_is_asked_about() -> None:
+    """A zsh-only command in a chain gets the question; 'no' says so and drops the input."""
+    _, term = run_session(["ls ; setopt autocd", "no", "quit"], argv=["--shell", "bash"])
+    assert any("doesn't work in bash" in prompt for prompt in term.prompts)
+    assert "OK, I won't explain it. Please re-enter the command." in term.lines
+    assert "(then)" not in term.output
+
+
+def test_other_shell_no_for_single_command_stays_quiet() -> None:
+    """For a single command, 'no' just goes back to the prompt, as before."""
+    _, term = run_session(["setopt", "no", "quit"], argv=["--shell", "bash"])
+    assert "OK, I won't explain it. Please re-enter the command." not in term.lines
+
+
+def test_exit_in_chain_gets_tip() -> None:
+    """exit anywhere in a chain still gets the 'type quit' tip."""
+    _, term = run_session(["yes", "echo bye ; exit", "quit"])
+    assert '(Tip: type "quit" to leave this program.)' in term.lines
+
+
+def test_quoted_arguments_survive_a_fix_in_a_chain() -> None:
+    """Fixing a typo in a chain keeps quoted arguments and redirect files intact."""
+    _, term = run_session(["yes", 'ehco "a | b" > "my file.txt"', "yes", "quit"])
+    assert "argument: a | b" in term.output
+    assert "file: my file.txt" in term.output
+
+
+def test_chain_header_keeps_the_users_quoting() -> None:
+    """Block headers show the text as typed: $HOME isn't turned into '$HOME'."""
+    _, term = run_session(["yes", 'echo "a b" $HOME | wc', "quit"])
+    assert '\necho "a b" $HOME\n' in "\n" + term.output + "\n"
+
+
+def test_chain_header_shows_spelling_fix_and_keeps_quoting() -> None:
+    """A fixed command name appears in the header, with the rest as typed."""
+    _, term = run_session(["yes", 'sl -la "$HOME" | wc', "yes", "quit"])
+    assert '\nls -la "$HOME"\n' in "\n" + term.output + "\n"
+
+
+@pytest.mark.parametrize(
+    ("typed", "header"), [("LS -A | wc", "LS -A"), (". ~/.bashrc ; ls", ". ~/.bashrc")]
+)
+def test_chain_header_keeps_names_as_typed(typed: str, header: str) -> None:
+    """Without a spelling fix, the header shows the name exactly as typed."""
+    _, term = run_session(["yes", typed, "quit"])
+    assert f"\n{header}\n" in "\n" + term.output + "\n"
+
+
+def test_comment_sign_is_unsupported_in_session() -> None:
+    """ls # list | grep x names '#' instead of explaining a pipe."""
+    _, term = run_session(["yes", "ls # list | grep x", "quit"])
+    assert 'Sorry, I can\'t explain "#" yet. Try a simpler version of the command.' in term.lines
+    assert "(pipe)" not in term.output

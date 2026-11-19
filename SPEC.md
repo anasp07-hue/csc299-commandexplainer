@@ -72,8 +72,11 @@ start
 - The user types a command name, with flags if they want: `ls`, `ls -la`, `rm -rf`, `chmod +x`. They can also type a pipe or chain: `ls -a | grep txt`, `mkdir docs && cd docs`.
 - Input is trimmed. Command names are matched without regard to case (`LS` becomes `ls`).
 - Parsing:
-  1. Tokenize with `shlex.shlex(text, posix=True, punctuation_chars=True)`, so quoted text stays together (`grep "a|b"` isn't treated as a pipe) and operators come out as their own tokens.
-  2. Split the tokens into **segments** at these operators: `|`, `&&`, `||`, `;`, `>`, `>>`, `<`. For `>`, `>>`, and `<`, the next token is a filename, not a command.
+  1. **Find the operators** with a small scanner over the raw text. It tracks quotes and backslashes, so a quoted or escaped operator (`grep "a|b"`, `echo "|"`, `a\|b`) isn't treated as one (ADR 0019). `shlex` with `punctuation_chars` can't tell `"|"` from `|`, so it isn't used for this.
+  2. **Split into segments** at these operators: `|`, `&&`, `||`, `;`, `>`, `>>`, `<`. Each segment is then split into words with `shlex.split`.
+     - After `>`, `>>`, or `<`, the first word is a **file**, not a command. Any words after the file still belong to the command before the redirect, as in a real shell (`sort > out.txt -r` gives `sort` the `-r`).
+     - A `;` at the very end is allowed (`ls;`).
+     - **Unsupported shell syntax** is named instead of guessed at (ADR 0019). This covers a single `&`, numbered redirects like `2>` or `2>&1`, `&>`, `>&`, `|&`, `<<`, `<<<`, `(` `)`, `$(...)`, backticks, and `#` at the start of a word (a comment in bash, a plain word in zsh). It prints `Sorry, I can't explain "2>" yet. Try a simpler version of the command.`
   3. In each segment, the first token is the **command** and the remaining tokens are **arguments**.
   4. A token that starts with `--` is one long flag (`--all`).
   5. A token that starts with a single `-` and has more than one character is read like this (ADR 0007):
@@ -96,7 +99,7 @@ start
 - An unclosed quote (`echo "hi`) prints `It looks like a quote (") is missing its partner. Please re-enter it.` and re-prompts.
 - A backslash at the very end (`echo hi\`) prints `Your command ends with a backslash (\), which needs something after it. Please re-enter it.` and re-prompts.
 - An empty command name (`'' -l`) prints `The command name is empty. Please re-enter it.` and re-prompts.
-- An operator with nothing on one side (`| grep`, `ls &&`) prints `Something is missing before/after "|". Please re-enter it.`
+- An operator with nothing on one side (`| grep`, `ls &&`, `ls >`) prints `Something is missing before "|". Please re-enter it.` or `Something is missing after "&&". Please re-enter it.`
 
 ### 3.3 Explanation output
 The output is short and simple, with no jargon where it can be avoided.
@@ -106,7 +109,7 @@ ls  —  list
   Shows the files and folders in the current folder.
 
   -l   Show the list in long form (size, date, permissions).
-  -a   Also show hidden files (the ones starting with a dot).
+  -a   Also show hidden files (the ones whose names start with a dot).
 
   Example:  ls -la
 ```
@@ -127,20 +130,27 @@ When the input has more than one segment, explain each command in order (using t
 ```
 ls -a
   ls — list: Shows the files and folders in the current folder.
-    -a   Also show hidden files (the ones starting with a dot).
+    -a   Also show hidden files (the ones whose names start with a dot).
 
 |  (pipe)
   Takes what the left command prints and feeds it into the right command.
 
 grep txt
-  grep — search text: Shows only the lines that contain the word you give it.
+  grep — search text: Searches for text inside files and shows the lines that
+    match.
     argument: txt
 
-In short: list all files, then keep only the lines containing "txt".
+In short: list files, then pass the output to find matching lines.
 ```
 
-- The "In short" line is optional. Leave it out unless every segment has a `short` phrase in the data (see §5).
-- Each command in a chain goes through spelling suggestions on its own. If the user says **no** to any suggestion, the whole input is rejected with "Command not found. Please re-enter it."
+- Input with any operator (including only a redirect, as in `ls > out.txt`) uses this chain format. A plain single command uses the full format from §3.3.
+- **Chain blocks are short** (ADR 0018). Each block's first line is the command exactly as typed, with the user's own quoting (`$HOME` stays `$HOME`). Only words changed by an accepted spelling fix are swapped in. After it comes `name — plain name: summary`, then only the flags the user typed, then `argument:` lines. There is no "Common options" and no example. Warnings and shell notes **are** still shown, because safety matters most when commands are combined.
+- A command run by `sudo` inside a chain, including a not-covered one, is explained inside the same block after `sudo runs this command:`, with the builtin warning if needed (ADRs 0010 and 0013).
+- **Redirect blocks** name the file (`file: out.txt`) and show the operator's warning (for `>`).
+- **"In short" line** (ADR 0018): built from each command's `short` phrase and each operator's `short` phrase. For example, `mkdir docs && cd docs` gives "In short: make a folder, and if that works, change folder." Redirects add their phrase with the file name: "…, and save the output to files.txt." A command run by sudo adds "(using sudo)". The line is left out if any command has no phrase (for example, a not-covered command). It is also left out when sudo runs a builtin it can't run (`sudo cd`), and when output saved with `>` or `>>` is also piped on with `|` or saved to a second file (`ls > a > b`), because bash and zsh behave differently there.
+- Each command in a chain goes through spelling suggestions on its own. If the user says **no** to any suggestion, the whole input is rejected with "Command not found. Please re-enter it." A command with no suggestion rejects the whole input with "Sorry, I don't know 'xyz'…".
+- A command on the not-covered list (§9) doesn't reject the chain. Its block says it isn't covered, and the other commands are still explained (ADR 0018).
+- The other-shell question (§3.4) and the `exit` tip (§3.5) apply to every command in a chain. Answering **no** to the other-shell question in a chain prints `OK, I won't explain it. Please re-enter the command.` and drops the input (ADR 0018). For a single command, **no** just returns to the prompt.
 - Operator explanations come from `operators.json` (see §5).
 
 ### 3.3.2 Colors
@@ -183,11 +193,12 @@ All command knowledge lives in one data file, `commandexplain/data/commands.json
 {
   "ls": {
     "name": "list",
+    "short": "list files",
     "summary": "Shows the files and folders in the current folder.",
     "shells": ["bash", "zsh"],
     "flags": {
       "-l": "Show the list in long form (size, date, permissions).",
-      "-a": "Also show hidden files (the ones starting with a dot).",
+      "-a": "Also show hidden files (the ones whose names start with a dot).",
       "-h": "Show file sizes in easy units like KB and MB (use with -l).",
       "-R": "Also list everything inside sub-folders."
     },
@@ -199,6 +210,7 @@ All command knowledge lives in one data file, `commandexplain/data/commands.json
   },
   "rm": {
     "name": "remove",
+    "short": "delete files",
     "summary": "Deletes files. They do not go to the trash.",
     "shells": ["bash", "zsh"],
     "flags": {
@@ -214,6 +226,7 @@ All command knowledge lives in one data file, `commandexplain/data/commands.json
   },
   "setopt": {
     "name": "set option",
+    "short": "enable a zsh setting",
     "summary": "Turns on a zsh setting that changes how the shell behaves.",
     "shells": ["zsh"],
     "flags": {},
@@ -237,7 +250,7 @@ All command knowledge lives in one data file, `commandexplain/data/commands.json
 | `warning` | str or null | no | Shown for dangerous commands |
 | `shell_notes` | dict[str, str] | no | Extra note per shell, for example `{"zsh": "..."}` |
 | `aliases` | list[str] | no | Other names that map to this entry (for example `"."` → `source`) |
-| `short` | str | no | A 2–4 word verb phrase for the "In short" line of a chain (for example `"list all files"`) |
+| `short` | str | yes (by test) | A 2–4 word lowercase verb phrase for the "In short" line of a chain (for example `"list files"`). Every command has one (ADR 0018) |
 | `runs_command` | bool | no | `true` for commands that run another command, like `sudo` (§3.2 step 7, ADR 0010) |
 | `flags_with_values` | list[str] | no | Flags that take the next word as their value, like sudo's `-u`; each must be a key in `flags` (ADR 0010) |
 | `builtin_only` | bool | no | `true` for shell builtins with no separate program (`cd`, `export`, ...), which `sudo` can't run (ADR 0013) |
@@ -249,15 +262,17 @@ Operators get their own key-value file, `commandexplain/data/operators.json`:
 
 ```json
 {
-  "|":  { "name": "pipe", "summary": "Takes what the left command prints and feeds it into the right command." },
-  "&&": { "name": "and then", "summary": "Runs the right command only if the left one worked." },
-  "||": { "name": "or else", "summary": "Runs the right command only if the left one failed." },
-  ";":  { "name": "then", "summary": "Runs the left command, then the right one, no matter what." },
-  ">":  { "name": "save to file", "summary": "Saves the output into a file, replacing what was in it.", "warning": "This erases the file's old contents." },
-  ">>": { "name": "add to file", "summary": "Adds the output to the end of a file." },
-  "<":  { "name": "read from file", "summary": "Feeds a file into the command as its input." }
+  "|":  { "name": "pipe", "short": "then pass the output to", "summary": "Takes what the left command prints and feeds it into the right command." },
+  "&&": { "name": "and then", "short": "and if that works,", "summary": "Runs the right command only if the left one worked." },
+  "||": { "name": "or else", "short": "and if that fails,", "summary": "Runs the right command only if the left one failed." },
+  ";":  { "name": "then", "short": "then", "summary": "Runs the left command, then the right one, no matter what." },
+  ">":  { "name": "save to file", "short": "and save the output to {file}", "summary": "Saves the output into a file, replacing what was in it.", "warning": "This erases the file's old contents." },
+  ">>": { "name": "add to file", "short": "and add the output to the end of {file}", "summary": "Adds the output to the end of a file." },
+  "<":  { "name": "read from file", "short": "using {file} as the input", "summary": "Feeds a file into the command as its input." }
 }
 ```
+
+Each operator has a `name`, a `summary`, a `short` phrase for the "In short" line, and an optional `warning`. Redirect phrases contain `{file}`, which is replaced by the file name, and joiner phrases don't (ADR 0018).
 
 **Why JSON and not a Python dict in code:** the data stays separate from the logic, it's easy for non-programmers to edit, and it can be validated by a test. It still becomes a plain key-value `dict` in Python.
 
@@ -336,6 +351,7 @@ csc299-commandexplain-cli/
 | `commands.json` missing or invalid JSON | Print a clear error and exit with code 1 (no traceback) |
 | Ctrl+C / Ctrl+D at any prompt | Print "Goodbye!" and exit with code 0 |
 | Unknown flag | Explain the known parts; for the unknown flag, suggest `man <cmd>` |
+| Unsupported shell syntax (`&`, `2>`, `$(...)`, and so on) | "Sorry, I can't explain "2>" yet. Try a simpler version of the command." (ADR 0019) |
 | Third-party tool (`git`, `npm`, and so on) | "'git' isn't a built-in terminal command, so it isn't covered." Uses a small list of known non-builtins, kept in the data |
 | Real command outside §6 (`unset`, `unalias`, `pkill`, and so on) | "'unset' is a real command, but I don't cover it yet." Also on that list. Checked before spelling suggestions (ADR 0011) |
 
@@ -356,6 +372,7 @@ csc299-commandexplain-cli/
 13. All tests pass with `pytest`.
 14. Typing `shell` asks for the shell again, and later explanations use the new shell.
 15. `unset` shows "'unset' is a real command, but I don't cover it yet." and never "Did you mean 'unsetopt'?". `sudo sl` asks "Did you mean 'ls'?".
+16. `ls 2>/dev/null` and `sleep 5 &` name the unsupported syntax instead of guessing. `| grep` and `ls &&` say which side of which operator is missing. `ls | sort` explains `ls` and says `sort` isn't covered.
 
 ## 11. Implementation phases
 
@@ -403,12 +420,12 @@ Done when: acceptance criteria 1–8, 14, and 15 pass.
 **Goal:** explain inputs that contain more than one command.
 
 Deliverables:
-- `parser.py` gains `shlex` tokenizing with `punctuation_chars=True` and splits input into segments at operators (§3.2 steps 1–2), plus the unclosed-quote and missing-side error messages.
+- `parser.py` gains a quote-aware operator scanner (ADR 0019) that splits input into commands, joiners, and redirects (§3.2 steps 1–2). It also produces the missing-side and unsupported-syntax errors, and keeps each command's typed text.
 - `formatter.py` gains chain output: commands and operators in order, plus the optional "In short" line (§3.3.1).
 - `cli.py` runs spelling suggestions for each segment.
 - Add `short` phrases to `commands.json` for the commands that should have them.
 
-Done when: acceptance criteria 9–10 pass.
+Done when: acceptance criteria 9, 10, and 16 pass.
 
 ### Phase 5 — Colors and polish
 **Goal:** make the output nicer to read and the project ready to hand in.
@@ -425,7 +442,7 @@ Done when: acceptance criteria 11 and 13 pass, which means all criteria pass.
 | 1 | Key-value data | 12 |
 | 2 | Explain one command | 2, 3 |
 | 3 | Interactive CLI | 1–8, 14, 15 |
-| 4 | Pipes and chains | 9, 10 |
+| 4 | Pipes and chains | 9, 10, 16 |
 | 5 | Colors and polish | 11, 13 |
 
 ## 12. Decisions
@@ -452,6 +469,8 @@ Each decision has an ADR in `docs/adr/` with the full reasoning.
 | Switching shells | Type `shell` to switch mid-session (§3.1) | 0016 |
 | Command list size | Keep the 35 commands in §6 for v1; more can be added as data later | 0017 |
 | Phase 3 details | Input-error wording, the `not_covered.json` format, and shell-question conveniences (§3.1, §3.2, §5.2) | 0017 |
+| Chain format and "In short" | Short blocks that keep warnings, plus phrases from `short` fields (§3.3.1, §5.1) | 0018 |
+| Finding operators | A quote-aware scanner instead of `shlex` punctuation; unsupported syntax is named (§3.2) | 0019 |
 
 ## 13. Open questions
 

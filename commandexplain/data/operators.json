@@ -1,31 +1,38 @@
 {
   "|": {
     "name": "pipe",
+    "short": "then pass the output to",
     "summary": "Takes what the left command prints and feeds it into the right command."
   },
   "&&": {
     "name": "and then",
+    "short": "and if that works,",
     "summary": "Runs the right command only if the left one worked."
   },
   "||": {
     "name": "or else",
+    "short": "and if that fails,",
     "summary": "Runs the right command only if the left one failed."
   },
   ";": {
     "name": "then",
+    "short": "then",
     "summary": "Runs the left command, then the right one, no matter what."
   },
   ">": {
     "name": "save to file",
+    "short": "and save the output to {file}",
     "summary": "Saves the output into a file, replacing what was in it.",
     "warning": "This erases the file's old contents."
   },
   ">>": {
     "name": "add to file",
+    "short": "and add the output to the end of {file}",
     "summary": "Adds the output to the end of a file."
   },
   "<": {
     "name": "read from file",
+    "short": "using {file} as the input",
     "summary": "Feeds a file into the command as its input."
   }
 }

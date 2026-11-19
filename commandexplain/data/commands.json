@@ -1,6 +1,7 @@
 {
   "cd": {
     "name": "change directory",
+    "short": "change folder",
     "summary": "Moves you into a different folder. Typing cd by itself takes you back to your home folder.",
     "shells": ["bash", "zsh"],
     "builtin_only": true,
@@ -19,6 +20,7 @@
   },
   "pwd": {
     "name": "print working directory",
+    "short": "show the current folder",
     "summary": "Shows the full path of the folder you are in right now.",
     "shells": ["bash", "zsh"],
     "flags": {
@@ -33,6 +35,7 @@
   },
   "ls": {
     "name": "list",
+    "short": "list files",
     "summary": "Shows the files and folders in the current folder.",
     "shells": ["bash", "zsh"],
     "flags": {
@@ -54,6 +57,7 @@
   },
   "mkdir": {
     "name": "make directory",
+    "short": "make a folder",
     "summary": "Creates a new folder.",
     "shells": ["bash", "zsh"],
     "flags": {
@@ -68,6 +72,7 @@
   },
   "rmdir": {
     "name": "remove directory",
+    "short": "delete an empty folder",
     "summary": "Deletes an empty folder. It refuses to delete a folder that still has something inside it.",
     "shells": ["bash", "zsh"],
     "flags": {
@@ -81,6 +86,7 @@
   },
   "touch": {
     "name": "create an empty file",
+    "short": "create an empty file",
     "summary": "Creates a new, empty file. If the file already exists, it just updates the file's last-changed time.",
     "shells": ["bash", "zsh"],
     "flags": {
@@ -96,6 +102,7 @@
   },
   "cp": {
     "name": "copy",
+    "short": "copy files",
     "summary": "Makes a copy of a file or folder. Write the original first and the place to copy it to second.",
     "shells": ["bash", "zsh"],
     "flags": {
@@ -114,6 +121,7 @@
   },
   "mv": {
     "name": "move",
+    "short": "move or rename files",
     "summary": "Moves a file or folder to a new place. It is also how you rename things.",
     "shells": ["bash", "zsh"],
     "flags": {
@@ -130,6 +138,7 @@
   },
   "rm": {
     "name": "remove",
+    "short": "delete files",
     "summary": "Deletes files. They do not go to the Trash.",
     "shells": ["bash", "zsh"],
     "flags": {
@@ -150,6 +159,7 @@
   },
   "ln": {
     "name": "link",
+    "short": "make a link",
     "summary": "Creates a link, which is a shortcut that points to another file or folder. Write the real file first and the new shortcut's name second.",
     "shells": ["bash", "zsh"],
     "flags": {
@@ -165,6 +175,7 @@
   },
   "cat": {
     "name": "concatenate",
+    "short": "print a file",
     "summary": "Prints everything in a file to the screen. It can also join several files together, one after another.",
     "shells": ["bash", "zsh"],
     "flags": {
@@ -180,6 +191,7 @@
   },
   "less": {
     "name": "page through a file",
+    "short": "page through a file",
     "summary": "Shows a file one screen at a time so you can scroll through it. Press space for the next page, / to search, and q to quit.",
     "shells": ["bash", "zsh"],
     "flags": {
@@ -196,6 +208,7 @@
   },
   "head": {
     "name": "show the start of a file",
+    "short": "show the first lines",
     "summary": "Shows the first 10 lines of a file.",
     "shells": ["bash", "zsh"],
     "flags": {
@@ -210,6 +223,7 @@
   },
   "tail": {
     "name": "show the end of a file",
+    "short": "show the last lines",
     "summary": "Shows the last 10 lines of a file.",
     "shells": ["bash", "zsh"],
     "flags": {
@@ -226,6 +240,7 @@
   },
   "wc": {
     "name": "word count",
+    "short": "count lines and words",
     "summary": "Counts the lines, words, and bytes (about the same as characters) in a file.",
     "shells": ["bash", "zsh"],
     "flags": {
@@ -242,6 +257,7 @@
   },
   "grep": {
     "name": "search text",
+    "short": "find matching lines",
     "summary": "Searches for text inside files and shows the lines that match.",
     "shells": ["bash", "zsh"],
     "flags": {
@@ -263,6 +279,7 @@
   },
   "find": {
     "name": "find files",
+    "short": "search for files",
     "summary": "Searches a folder and all of its sub-folders for files and folders by name, type, size, or date.",
     "shells": ["bash", "zsh"],
     "flags": {
@@ -283,6 +300,7 @@
   },
   "which": {
     "name": "find a command's location",
+    "short": "locate a command",
     "summary": "Shows where the program for a command is stored on your computer.",
     "shells": ["bash", "zsh"],
     "flags": {
@@ -299,6 +317,7 @@
   },
   "chmod": {
     "name": "change mode",
+    "short": "change permissions",
     "summary": "Changes who is allowed to read, change, or run a file. For example, chmod +x script.sh lets you run script.sh as a program.",
     "shells": ["bash", "zsh"],
     "flags": {
@@ -313,6 +332,7 @@
   },
   "chown": {
     "name": "change owner",
+    "short": "change the owner",
     "summary": "Changes which user owns a file. You usually need sudo to use it.",
     "shells": ["bash", "zsh"],
     "flags": {
@@ -327,6 +347,7 @@
   },
   "sudo": {
     "name": "superuser do",
+    "short": "run as the administrator",
     "summary": "Runs a command as the administrator (root), who is allowed to change anything on the computer. It asks for your password first.",
     "shells": ["bash", "zsh"],
     "flags": {
@@ -348,6 +369,7 @@
   },
   "ps": {
     "name": "process status",
+    "short": "list running programs",
     "summary": "Shows programs (processes) that are running, each with a number called a PID that you can use with kill. By itself it only shows the ones started from this terminal window.",
     "shells": ["bash", "zsh"],
     "flags": {
@@ -363,6 +385,7 @@
   },
   "kill": {
     "name": "stop a program",
+    "short": "stop a program",
     "summary": "Stops a running program by its process number (PID). Use ps or top to find the PID.",
     "shells": ["bash", "zsh"],
     "flags": {
@@ -383,6 +406,7 @@
   },
   "top": {
     "name": "live process monitor",
+    "short": "watch running programs",
     "summary": "Shows a live, updating list of running programs, how hard each one is making the computer work (CPU), and how much memory it uses. Press q to quit.",
     "shells": ["bash", "zsh"],
     "flags": {
@@ -396,6 +420,7 @@
   },
   "echo": {
     "name": "print text",
+    "short": "print text",
     "summary": "Prints the text you give it back to the screen. It can also show what a named setting (a variable) holds, like echo $HOME for your home folder.",
     "shells": ["bash", "zsh"],
     "flags": {
@@ -412,6 +437,7 @@
   },
   "clear": {
     "name": "clear the screen",
+    "short": "clear the screen",
     "summary": "Wipes the terminal screen so you can start with a clean view. The shortcut Ctrl+L does the same thing.",
     "shells": ["bash", "zsh"],
     "flags": {},
@@ -423,6 +449,7 @@
   },
   "history": {
     "name": "command history",
+    "short": "show past commands",
     "summary": "Shows a numbered list of commands you have typed before. Type ! and a number (like !42) to run one of them again.",
     "shells": ["bash", "zsh"],
     "builtin_only": true,
@@ -440,6 +467,7 @@
   },
   "man": {
     "name": "manual",
+    "short": "open the manual",
     "summary": "Opens the manual page for a command, which explains everything it can do. Scroll with the arrow keys and press q to quit.",
     "shells": ["bash", "zsh"],
     "flags": {
@@ -454,6 +482,7 @@
   },
   "alias": {
     "name": "make a shortcut",
+    "short": "make a shortcut",
     "summary": "Creates a short name for a longer command, like alias ll='ls -l'. Typing alias by itself lists all your shortcuts.",
     "shells": ["bash", "zsh"],
     "builtin_only": true,
@@ -469,6 +498,7 @@
   },
   "export": {
     "name": "share a variable",
+    "short": "share a variable",
     "summary": "Creates a named setting (a variable) that programs started from this terminal can read, like export EDITOR=nano. It only lasts until you close the terminal.",
     "shells": ["bash", "zsh"],
     "builtin_only": true,
@@ -487,6 +517,7 @@
   },
   "source": {
     "name": "run a file's commands",
+    "short": "run a file's commands",
     "summary": "Runs the commands from a file inside your current terminal. It is often used to reload your settings after you edit them.",
     "shells": ["bash", "zsh"],
     "builtin_only": true,
@@ -502,6 +533,7 @@
   },
   "exit": {
     "name": "leave the shell",
+    "short": "leave the shell",
     "summary": "Closes the shell you are in, which usually closes the terminal window or tab.",
     "shells": ["bash", "zsh"],
     "builtin_only": true,
@@ -514,6 +546,7 @@
   },
   "shopt": {
     "name": "shell options",
+    "short": "change a bash setting",
     "summary": "Turns bash settings on or off, or shows which ones are on.",
     "shells": ["bash"],
     "builtin_only": true,
@@ -530,6 +563,7 @@
   },
   "setopt": {
     "name": "set option",
+    "short": "enable a zsh setting",
     "summary": "Turns on a zsh setting that changes how the shell behaves. Typing setopt by itself lists the settings you have changed.",
     "shells": ["zsh"],
     "builtin_only": true,
@@ -542,6 +576,7 @@
   },
   "unsetopt": {
     "name": "unset option",
+    "short": "disable a zsh setting",
     "summary": "Turns off a zsh setting. It is the opposite of setopt.",
     "shells": ["zsh"],
     "builtin_only": true,

@@ -5,11 +5,18 @@ from __future__ import annotations
 import pytest
 
 from commandexplain.parser import (
+    Chain,
+    ChainCommand,
     ParsedInput,
     ParseError,
+    Redirect,
     SplitArgs,
+    chain_to_text,
+    parse_chain,
     parse_input,
+    retype,
     split_flags,
+    split_operators,
     tokenize,
 )
 
@@ -243,3 +250,215 @@ def test_value_given_with_equals_is_not_taken_twice() -> None:
 def test_keep_flags_whole_never_splits(token: str) -> None:
     """With keep_flags_whole, unknown groups stay as one flag (ADR 0014)."""
     assert split_flags([token, "5"], {"-9"}, keep_flags_whole=True).flags == (token,)
+
+
+# --- Chains (SPEC.md §3.2 steps 1-2, ADR 0019) ---------------------------
+
+
+def test_pipe_splits_into_two_commands() -> None:
+    """ls -a | grep txt is two commands joined by a pipe."""
+    assert parse_chain("ls -a | grep txt") == Chain(
+        (ChainCommand(("ls", "-a")), ChainCommand(("grep", "txt"))), ("|",)
+    )
+
+
+@pytest.mark.parametrize("joiner", ["|", "&&", "||", ";"])
+def test_every_joiner(joiner: str) -> None:
+    """Each joiner separates two commands, with or without spaces around it."""
+    for text in (f"ls {joiner} wc", f"ls{joiner}wc"):
+        chain = parse_chain(text)
+        assert chain is not None
+        assert [c.tokens for c in chain.commands] == [("ls",), ("wc",)]
+        assert chain.joiners == (joiner,)
+
+
+@pytest.mark.parametrize("text", ['grep "a|b" f', "grep 'a|b' f", "grep a\\|b f", 'echo "|"'])
+def test_quoted_or_escaped_operators_are_not_operators(text: str) -> None:
+    """AC 9: quoted or escaped pipes are part of an argument, not a pipe."""
+    chain = parse_chain(text)
+    assert chain is not None and chain.is_single
+
+
+def test_redirect_target_is_a_file_not_a_command() -> None:
+    """echo hi > out.txt: out.txt is the file, and echo is the only command."""
+    chain = parse_chain("echo hi > out.txt")
+    assert chain == Chain((ChainCommand(("echo", "hi"), (Redirect(">", "out.txt"),)),))
+    assert not chain.is_single
+
+
+def test_words_after_redirect_file_belong_to_the_command() -> None:
+    """As in a real shell, sort > out.txt -r gives sort the -r."""
+    chain = parse_chain("sort > out.txt -r")
+    assert chain is not None
+    assert chain.commands[0].tokens == ("sort", "-r")
+    assert chain.commands[0].redirects == (Redirect(">", "out.txt"),)
+
+
+def test_redirects_and_joiners_together() -> None:
+    """cat < in.txt | sort >> out.txt keeps each redirect with its own command."""
+    chain = parse_chain("cat < in.txt | sort >> out.txt")
+    assert chain == Chain(
+        (
+            ChainCommand(("cat",), (Redirect("<", "in.txt"),)),
+            ChainCommand(("sort",), (Redirect(">>", "out.txt"),)),
+        ),
+        ("|",),
+    )
+
+
+def test_trailing_semicolon_is_allowed() -> None:
+    """ls; is a single command in a real shell."""
+    chain = parse_chain("ls;")
+    assert chain is not None and chain.is_single
+
+
+@pytest.mark.parametrize(
+    ("text", "reason", "detail"),
+    [
+        ("| grep x", ParseError.MISSING_BEFORE, "|"),
+        ("&& ls", ParseError.MISSING_BEFORE, "&&"),
+        ("> out.txt", ParseError.MISSING_BEFORE, ">"),
+        ("ls &&", ParseError.MISSING_AFTER, "&&"),
+        ("ls |", ParseError.MISSING_AFTER, "|"),
+        ("ls | | wc", ParseError.MISSING_AFTER, "|"),
+        ("ls >", ParseError.MISSING_AFTER, ">"),
+        ("ls > | wc", ParseError.MISSING_AFTER, ">"),
+    ],
+)
+def test_operator_with_a_missing_side(text: str, reason: str, detail: str) -> None:
+    """An operator with nothing on one side is reported with which side and which operator."""
+    with pytest.raises(ParseError) as excinfo:
+        parse_chain(text)
+    assert excinfo.value.reason == reason
+    assert excinfo.value.detail == detail
+
+
+@pytest.mark.parametrize(
+    ("text", "syntax"),
+    [
+        ("sleep 5 &", "&"),
+        ("ls 2>/dev/null", "2>"),
+        ("ls 2> err.txt", "2>"),
+        ("ls > out 2>&1", "2>"),
+        ("ls &> out", "&>"),
+        ("echo $(date)", "$("),
+        ('echo "$(date)"', "$("),
+        ("echo `date`", "`"),
+        ("(cd x)", "("),
+        ("cat << EOF", "<<"),
+        ("ls |& wc", "|&"),
+        ("ls # comment", "#"),
+        ("ls -a #| grep x", "#"),
+        ("ls;#x", "#"),
+    ],
+)
+def test_unsupported_syntax_is_named(text: str, syntax: str) -> None:
+    """Shell syntax this version doesn't explain raises UNSUPPORTED naming it (ADR 0019)."""
+    with pytest.raises(ParseError) as excinfo:
+        parse_chain(text)
+    assert excinfo.value.reason == ParseError.UNSUPPORTED
+    assert excinfo.value.detail == syntax
+
+
+@pytest.mark.parametrize(
+    "text", ["echo '$(date)'", "echo '&'", "echo 2 > f", "head -2>x", "echo a#b", "echo '#'"]
+)
+def test_lookalikes_of_unsupported_syntax_are_fine(text: str) -> None:
+    """Single-quoted text, a separate number, or a number inside a flag isn't unsupported."""
+    assert parse_chain(text) is not None
+
+
+@pytest.mark.parametrize(
+    ("text", "reason"),
+    [
+        ('ls | grep "x', ParseError.UNCLOSED_QUOTE),
+        ("ls | echo x\\", ParseError.TRAILING_BACKSLASH),
+        ("ls | '' x", ParseError.EMPTY_COMMAND),
+    ],
+)
+def test_chain_keeps_earlier_parse_errors(text: str, reason: str) -> None:
+    """The Phase 3 errors still work inside chains."""
+    with pytest.raises(ParseError) as excinfo:
+        parse_chain(text)
+    assert excinfo.value.reason == reason
+
+
+@pytest.mark.parametrize("text", ["", "   ", " "])
+def test_blank_chain_is_none(text: str) -> None:
+    """Blank input means there's nothing to explain."""
+    assert parse_chain(text) is None
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "ls -a | grep txt",
+        'grep "a|b" f',
+        "cat < 'my file.txt' | sort > out.txt",
+        "mkdir d && cd d || echo failed ; ls",
+        "echo '&&' \"$HOME\"",
+    ],
+)
+def test_chain_to_text_round_trips(text: str) -> None:
+    """Rebuilding the text and parsing it again gives the same chain."""
+    chain = parse_chain(text)
+    assert chain is not None
+    assert parse_chain(chain_to_text(chain)) == chain
+
+
+def test_split_operators_keeps_quotes_in_pieces() -> None:
+    """split_operators returns raw pieces; quotes are removed later by tokenize()."""
+    assert split_operators('echo "a|b" | wc') == ['echo "a|b" ', "|", " wc"]
+
+
+@pytest.mark.parametrize("text", ["ls;2>x", "ls|2>x", "ls&&2>x"])
+def test_numbered_redirect_right_after_an_operator(text: str) -> None:
+    """2> straight after an operator is still a numbered redirect (unsupported)."""
+    with pytest.raises(ParseError) as excinfo:
+        parse_chain(text)
+    assert (excinfo.value.reason, excinfo.value.detail) == (ParseError.UNSUPPORTED, "2>")
+
+
+def test_lone_semicolon_is_missing_before() -> None:
+    """A lone ';' says something is missing before it."""
+    with pytest.raises(ParseError) as excinfo:
+        parse_chain(";")
+    assert (excinfo.value.reason, excinfo.value.detail) == (ParseError.MISSING_BEFORE, ";")
+
+
+def test_clobber_redirect_is_unsupported() -> None:
+    """>| (force overwrite) is named as unsupported."""
+    with pytest.raises(ParseError) as excinfo:
+        parse_chain("ls >| out")
+    assert excinfo.value.detail == ">|"
+
+
+def test_chain_command_keeps_typed_text() -> None:
+    """Each command remembers its own text, quoting included."""
+    chain = parse_chain('echo "a b" $HOME | sort > out.txt -r')
+    assert chain is not None
+    assert [c.text for c in chain.commands] == ['echo "a b" $HOME', "sort > out.txt -r"]
+
+
+@pytest.mark.parametrize(
+    ("typed", "tokens", "expected"),
+    [
+        ('sl -la "$HOME"', ["ls", "-la", "$HOME"], 'ls -la "$HOME"'),
+        ("sudo sl 'a b'", ["sudo", "ls", "a b"], "sudo ls 'a b'"),
+        ("srot > out.txt -r", ["sort", "-r"], "sort > out.txt -r"),
+        ("LS", ["ls"], "ls"),
+    ],
+)
+def test_retype_changes_only_the_fixed_words(typed: str, tokens: list[str], expected: str) -> None:
+    """retype swaps changed words and keeps the user's quoting everywhere else."""
+    chain = parse_chain(typed)
+    assert chain is not None
+    fixed = retype(chain.commands[0], tokens)
+    assert fixed.text == expected
+    assert fixed.tokens == tuple(tokens)
+
+
+def test_retype_without_text_falls_back_to_rebuilding() -> None:
+    """A command built in code (no typed text) is rebuilt from its words."""
+    fixed = retype(ChainCommand(("sl", "a b")), ["ls", "a b"])
+    assert fixed.display() == "ls 'a b'"

@@ -285,7 +285,6 @@ def test_show_common_false_leaves_common_options_out() -> None:
     assert "Common options" not in text
 
 
-
 def test_sudo_with_builtin_warns_then_explains() -> None:
     """sudo cd /root: warn that sudo can't run cd, then still explain cd (ADR 0013)."""
     text = explain("sudo cd /root", shell="bash")
@@ -356,3 +355,138 @@ def test_long_unknown_flag_goes_on_its_own_line() -> None:
     i = lines.index(f"  {long_flag}")
     assert lines[i + 1].startswith("       I don't have an explanation")
     assert "  -l   Show the list in long form" in text
+
+
+# --- Chains (SPEC.md §3.3.1, ADR 0018) -----------------------------------
+
+
+def test_ac9_pipe_explains_each_part_in_order() -> None:
+    """AC 9: ls -a | grep txt explains ls -a, then the pipe, then grep txt."""
+    text = explain("ls -a | grep txt", shell="zsh")
+    ls_at = text.index("ls -a\n  ls — list:")
+    pipe_at = text.index("|  (pipe)")
+    grep_at = text.index("grep txt\n  grep — search text:")
+    assert ls_at < pipe_at < grep_at
+    assert "-a   Also show hidden files" in text
+    assert "argument: txt" in text
+
+
+def test_ac9_quoted_pipe_is_one_command() -> None:
+    """AC 9: grep "a|b" f is a single command with the full format, not a pipe."""
+    text = explain('grep "a|b" f', shell="zsh")
+    assert text.startswith("grep  —  search text")
+    assert "(pipe)" not in text
+    assert "argument: a|b" in text
+
+
+def test_chain_blocks_have_no_example_or_common_options() -> None:
+    """Chain blocks are short: no Example line and no Common options (ADR 0018)."""
+    text = explain("ls | wc", shell="zsh")
+    assert "Example:" not in text
+    assert "Common options" not in text
+
+
+def test_chain_keeps_warnings_and_shell_notes() -> None:
+    """Safety warnings and shell notes still show inside a chain."""
+    text = explain("rm -rf old && echo done", shell="zsh")
+    assert "⚠ Careful: This deletes files permanently." in text
+    assert "Note for zsh:" in text
+
+
+def test_in_short_line_joins_phrases() -> None:
+    """The "In short" line joins each command's phrase with its operator's phrase."""
+    text = explain("mkdir docs && cd docs", shell="bash")
+    assert text.endswith("In short: make a folder, and if that works, change folder.")
+
+
+def test_in_short_includes_redirect_files() -> None:
+    """Redirects add their file to the "In short" line."""
+    text = explain("ls > files.txt", shell="bash")
+    assert text.endswith("In short: list files, and save the output to files.txt.")
+
+
+def test_redirect_block_names_file_and_warns() -> None:
+    """A > redirect names its file and warns about erasing it."""
+    text = explain("echo hi > out.txt", shell="bash")
+    assert ">  (save to file)" in text
+    assert "file: out.txt" in text
+    assert "⚠ Careful: This erases the file's old contents." in text
+
+
+def test_not_covered_command_in_chain_is_named() -> None:
+    """A not-covered command gets its message as its block, and no "In short" line."""
+    text = explain("ls | sort", shell="bash")
+    assert "sort\n  'sort' is a real command, but I don't cover it yet." in text
+    assert "In short" not in text
+
+
+def test_unknown_command_in_chain_raises() -> None:
+    """A command that's neither known nor not-covered raises UnknownCommandError."""
+    with pytest.raises(UnknownCommandError, match="xyzzy"):
+        explain("ls | xyzzy", shell="bash")
+
+
+def test_sudo_inside_chain() -> None:
+    """sudo in a chain explains its inner command, and the phrase says 'using sudo'."""
+    text = explain("sudo rm -rf x ; echo done", shell="bash")
+    assert "  sudo runs this command:\n  rm — remove:" in text
+    assert "This deletes files permanently." in text
+    assert "In short: delete files (using sudo), then print text." in text
+
+
+def test_sudo_builtin_warning_inside_chain() -> None:
+    """sudo cd in a chain still gets the builtin warning (ADR 0013)."""
+    flat = " ".join(explain("sudo cd /root && ls", shell="bash").split())
+    assert "sudo can't run cd, because cd is built into the shell." in flat
+
+
+@pytest.mark.parametrize("shell", ["bash", "zsh"])
+def test_long_chain_fits_the_width(shell: str) -> None:
+    """Every line of a long chain wraps within the width (argument lines aside)."""
+    typed = "sudo rm -rf old ; find . -name x -delete | grep -i txt >> log.txt && echo done"
+    for line in explain(typed, shell=shell).splitlines():
+        if not line.lstrip().startswith("argument: "):
+            assert len(line) <= WIDTH, line
+
+
+@pytest.mark.parametrize(
+    ("typed", "header"),
+    [
+        ('echo "hello world" $HOME | wc', 'echo "hello world" $HOME'),
+        ("find . -exec rm {} \\; | wc", "find . -exec rm {} \\;"),
+        ("sort > out.txt -r | wc", "sort > out.txt -r"),
+    ],
+)
+def test_chain_block_header_is_text_as_typed(typed: str, header: str) -> None:
+    """The first line of each block is exactly what the user typed for that command."""
+    assert explain(typed, shell="bash").splitlines()[0] == header
+
+
+def test_no_in_short_when_saved_output_is_piped() -> None:
+    """ls > out.txt | wc: bash and zsh differ here, so there's no "In short" line."""
+    assert "In short" not in explain("ls > out.txt | wc", shell="bash")
+
+
+def test_sudo_not_covered_inner_in_chain_has_lead_in() -> None:
+    """sudo git push | wc: the block says sudo runs it before saying git isn't covered."""
+    text = explain("sudo git push | wc", shell="bash")
+    assert "  sudo runs this command:\n  'git' isn't a built-in terminal command" in text
+
+
+def test_no_in_short_when_sudo_runs_a_builtin() -> None:
+    """sudo cd can't work, so the line can't say "change folder (using sudo)"."""
+    assert "In short" not in explain("sudo cd /tmp ; ls", shell="bash")
+
+
+def test_no_in_short_with_two_output_redirects() -> None:
+    """ls > a > b differs between bash and zsh, so there's no "In short" line."""
+    assert "In short" not in explain("ls > a > b", shell="bash")
+
+
+def test_in_short_still_shown_for_one_redirect_at_the_end() -> None:
+    """A single > at the end of the chain still gets its "In short" line."""
+    flat = " ".join(explain("ls | wc > n.txt", shell="bash").split())
+    assert flat.endswith(
+        "In short: list files, then pass the output to count lines and words, "
+        "and save the output to n.txt."
+    )

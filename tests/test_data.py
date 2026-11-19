@@ -212,12 +212,13 @@ def test_aliases_do_not_clash() -> None:
     [pytest.param(symbol, entry, id=symbol) for symbol, entry in OPERATORS.items()],
 )
 def test_operator_schema(symbol: str, entry: dict) -> None:
-    """Operators have a name and summary, an optional warning, and nothing else."""
+    """Operators have a name, summary, and short phrase, an optional warning, and nothing else."""
     assert isinstance(entry.get("name"), str) and entry["name"].strip()
     assert isinstance(entry.get("summary"), str) and entry["summary"].strip()
+    assert isinstance(entry.get("short"), str) and entry["short"].strip()
     if "warning" in entry:
         assert isinstance(entry["warning"], str) and entry["warning"].strip()
-    unknown = entry.keys() - {"name", "summary", "warning"}
+    unknown = entry.keys() - {"name", "summary", "short", "warning"}
     assert not unknown, f"{symbol}: unknown fields {sorted(unknown)}"
     sentences = count_sentences(entry["summary"])
     assert 1 <= sentences <= 2, f"{symbol}: summary has {sentences} sentences"
@@ -303,3 +304,21 @@ def test_not_covered_does_not_overlap_commands() -> None:
 def test_review_examples_are_on_not_covered_list(name: str) -> None:
     """The examples from the spec and ADR 0011 are on the list."""
     assert name in NOT_COVERED
+
+
+# --- "In short" phrases (SPEC.md §3.3.1, ADR 0018) ------------------------
+
+
+@pytest.mark.parametrize(("name", "entry"), command_params())
+def test_every_command_has_a_short_phrase(name: str, entry: dict) -> None:
+    """Every command has a 2-4 word lowercase verb phrase for the "In short" line."""
+    short = entry.get("short", "")
+    assert 2 <= len(short.split()) <= 4, f"{name}: short phrase {short!r} isn't 2-4 words"
+    assert short == short.lower() and not short.endswith("."), f"{name}: {short!r}"
+
+
+@pytest.mark.parametrize("symbol", sorted(SPEC_OPERATORS))
+def test_operator_short_phrase_mentions_file_only_for_redirects(symbol: str) -> None:
+    """Redirect phrases name the file with {file}; joiner phrases don't."""
+    has_file = "{file}" in OPERATORS[symbol]["short"]
+    assert has_file == (symbol in {">", ">>", "<"}), symbol

@@ -4,21 +4,29 @@ from __future__ import annotations
 
 import argparse
 import os
-import shlex
 import sys
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
-from commandexplain.formatter import explain
+from commandexplain.formatter import NOT_COVERED_MESSAGES, explain
 from commandexplain.lookup import (
     DataFileError,
     default_commands,
     default_not_covered,
+    default_operators,
     find_command,
     not_covered_kind,
     suggest,
 )
-from commandexplain.parser import ParseError, parse_input, split_flags
+from commandexplain.parser import (
+    Chain,
+    ChainCommand,
+    ParseError,
+    chain_to_text,
+    parse_chain,
+    retype,
+    split_flags,
+)
 from commandexplain.shell import SHELLS, ask_shell, choose_shell, read_shell_answer
 
 PROMPT = "Enter a command to explain (or 'quit' to leave): "
@@ -32,16 +40,17 @@ EXIT_TIP = '(Tip: type "quit" to leave this program.)'
 SHELL_CHOSEN = 'Using {shell}. (Type "shell" any time to switch.)'
 SHELL_SWITCHED = "Switched to {shell}."
 WRONG_SHELL = "'{name}' is a {other} command and doesn't work in {shell}. Explain it anyway?"
-NOT_COVERED = {
-    "tool": "'{name}' isn't a built-in terminal command, so it isn't covered.",
-    "uncovered": "'{name}' is a real command, but I don't cover it yet.",
-}
+SKIPPED_IN_CHAIN = "OK, I won't explain it. Please re-enter the command."
 PARSE_MESSAGES = {
     ParseError.UNCLOSED_QUOTE: 'It looks like a quote (") is missing its partner. '
     "Please re-enter it.",
     ParseError.TRAILING_BACKSLASH: "Your command ends with a backslash (\\), which needs "
     "something after it. Please re-enter it.",
     ParseError.EMPTY_COMMAND: "The command name is empty. Please re-enter it.",
+    ParseError.MISSING_BEFORE: 'Something is missing before "{detail}". Please re-enter it.',
+    ParseError.MISSING_AFTER: 'Something is missing after "{detail}". Please re-enter it.',
+    ParseError.UNSUPPORTED: 'Sorry, I can\'t explain "{detail}" yet. Try a simpler version '
+    "of the command.",
 }
 
 InputFn = Callable[[str], str]
@@ -102,13 +111,19 @@ class Session:
         console: Console,
         commands: dict[str, dict[str, Any]],
         not_covered: dict[str, dict[str, Any]],
+        operators: dict[str, dict[str, Any]],
         env: Mapping[str, str],
         shell: str | None = None,
     ) -> None:
-        """Set up a session. If shell is None, the user is asked for it when run() starts."""
+        """Set up a session. If shell is None, the user is asked for it when run() starts.
+
+        All data is passed in already loaded, so main() can turn a broken data
+        file into a clean error message (SPEC.md §9).
+        """
         self.console = console
         self.commands = commands
         self.not_covered = not_covered
+        self.operators = operators
         self.env = env
         self.shell = shell
 
@@ -150,35 +165,49 @@ class Session:
         console.say(SHELL_SWITCHED.format(shell=shell))
 
     def handle_input(self, text: str) -> None:
-        """Explain one typed command, fixing typos with the user's OK along the way."""
+        """Explain a typed command or chain, fixing typos with the user's OK along the way."""
         try:
-            parsed = parse_input(text)
+            chain = parse_chain(text)
         except ParseError as err:
-            self.console.say(PARSE_MESSAGES[err.reason])
+            self.console.say(PARSE_MESSAGES[err.reason].format(detail=err.detail))
             return
-        if parsed is None:
+        if chain is None:
             return
-
         if self.shell is None:
             raise RuntimeError("handle_input() needs a shell; run() chooses one first")
-        tokens = self._resolve_tokens([parsed.command, *parsed.args])
-        if tokens is None:
-            return
-        self.console.say(explain(shlex.join(tokens), self.shell, self.commands))
-        if find_command(tokens[0], self.commands) == "exit":
+
+        in_chain = not chain.is_single
+        fixed: list[ChainCommand] = []
+        for command in chain.commands:
+            tokens = self._resolve_tokens(list(command.tokens), in_chain)
+            if tokens is None:
+                return
+            fixed.append(retype(command, tokens))
+        fixed_chain = Chain(tuple(fixed), chain.joiners)
+
+        self.console.say(
+            explain(
+                chain_to_text(fixed_chain),
+                self.shell,
+                self.commands,
+                self.operators,
+                self.not_covered,
+            )
+        )
+        if any(find_command(c.tokens[0], self.commands) == "exit" for c in fixed):
             self.console.say(EXIT_TIP)
         self.console.say("")
 
-    def _resolve_tokens(self, tokens: list[str]) -> list[str] | None:
-        """Check each command in the input (sudo's inner commands too, ADR 0015).
+    def _resolve_tokens(self, tokens: list[str], in_chain: bool) -> list[str] | None:
+        """Check each command in one segment (sudo's inner commands too, ADR 0015).
 
-        Returns the words with any accepted spelling fixes, or None if the input
-        should be dropped (a message has already been shown).
+        Returns the words with any accepted spelling fixes, or None if the whole
+        input should be dropped (a message has already been shown).
         """
         index = 0
         is_inner = False
         while True:
-            resolved = self._resolve_name(tokens[index], is_inner)
+            resolved = self._resolve_name(tokens[index], is_inner, in_chain)
             if resolved is None:
                 return None
             tokens[index] = resolved
@@ -187,6 +216,8 @@ class Session:
                 return tokens
             entry = self.commands[name]
             if not self._shell_ok(name, entry):
+                if in_chain:
+                    self.console.say(SKIPPED_IN_CHAIN)
                 return None
             if not entry.get("runs_command"):
                 return tokens
@@ -202,19 +233,22 @@ class Session:
             index = len(tokens) - len(split.inner)
             is_inner = True
 
-    def _resolve_name(self, typed: str, is_inner: bool) -> str | None:
+    def _resolve_name(self, typed: str, is_inner: bool, in_chain: bool) -> str | None:
         """Return the command name to use, or None to drop the input (SPEC.md §4, §9).
 
         Order: known command, then the not-covered list, then a spelling
         suggestion (ADR 0011). An unknown command after sudo is kept, so the
-        explanation can say sudo runs something it doesn't know.
+        explanation can say sudo runs something it doesn't know. In a chain, a
+        not-covered command is kept quietly; its block in the chain says so
+        (ADR 0018).
         """
-        name = find_command(typed, self.commands)
-        if name is not None:
-            return name
+        if find_command(typed, self.commands) is not None:
+            return typed  # keep the name as typed (LS, .); explain() resolves it
         kind = not_covered_kind(typed, self.not_covered)
         if kind is not None:
-            self.console.say(NOT_COVERED[kind].format(name=typed))
+            if in_chain:
+                return typed
+            self.console.say(NOT_COVERED_MESSAGES[kind].format(name=typed))
             return typed if is_inner else None
         guess = suggest(typed, self.commands)
         if guess is not None:
@@ -258,9 +292,10 @@ def main(
     try:
         commands = default_commands()
         not_covered = default_not_covered()
+        operators = default_operators()
     except DataFileError as err:
         print(f"Error: {err}", file=sys.stderr)
         return 1
     console = Console(input_fn, print_fn)
     env = os.environ if env is None else env
-    return Session(console, commands, not_covered, env, shell=args.shell).run()
+    return Session(console, commands, not_covered, operators, env, shell=args.shell).run()
