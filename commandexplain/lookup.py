@@ -11,6 +11,7 @@ from typing import Any
 DATA_DIR = Path(__file__).parent / "data"
 COMMANDS_FILE = DATA_DIR / "commands.json"
 OPERATORS_FILE = DATA_DIR / "operators.json"
+NOT_COVERED_FILE = DATA_DIR / "not_covered.json"
 
 
 class DataFileError(Exception):
@@ -83,6 +84,21 @@ def load_commands(path: Path | None = None) -> dict[str, dict[str, Any]]:
 def load_operators(path: Path | None = None) -> dict[str, dict[str, Any]]:
     """Return all operator entries (|, &&, >, ...), keyed by the operator symbol."""
     return _load_json_object(path or OPERATORS_FILE)
+
+
+def load_not_covered(path: Path | None = None) -> dict[str, dict[str, Any]]:
+    """Return names that are known but not explained (git, unset, ...), keyed by name.
+
+    Each entry's "kind" is "tool" (a separate program, not part of the terminal)
+    or "uncovered" (a real terminal command this version doesn't explain yet).
+    """
+    return _load_json_object(path or NOT_COVERED_FILE)
+
+
+@lru_cache(maxsize=1)
+def default_not_covered() -> dict[str, dict[str, Any]]:
+    """The shipped not-covered list, read from disk only once per run (read-only)."""
+    return load_not_covered()
 
 
 @lru_cache(maxsize=1)
@@ -180,3 +196,16 @@ def suggest(name: str, commands: dict[str, dict[str, Any]] | None = None) -> str
         return min(close, key=lambda candidate: (-_similarity(word, candidate), candidate))
     matches = difflib.get_close_matches(word, names, n=1, cutoff=SUGGEST_CUTOFF)
     return matches[0] if matches else None
+
+
+def not_covered_kind(
+    name: str, not_covered: dict[str, dict[str, Any]] | None = None
+) -> str | None:
+    """Return "tool" or "uncovered" if the name is on the not-covered list, else None.
+
+    The CLI checks this before suggesting spellings, so 'unset' isn't turned
+    into 'unsetopt' (ADR 0011).
+    """
+    not_covered = default_not_covered() if not_covered is None else not_covered
+    entry = not_covered.get(name.strip().lower())
+    return entry["kind"] if entry else None

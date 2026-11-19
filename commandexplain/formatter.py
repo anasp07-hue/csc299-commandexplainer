@@ -8,11 +8,11 @@ from typing import Any
 
 from commandexplain.lookup import default_commands, find_command
 from commandexplain.parser import ParsedInput, parse_input, split_flags
+from commandexplain.shell import SHELLS
 
 WIDTH = 80
 INDENT = "  "
 MAX_LABEL = 16
-SHELLS = ("bash", "zsh")
 
 UNKNOWN_FLAG = (
     "I don't have an explanation for this option. "

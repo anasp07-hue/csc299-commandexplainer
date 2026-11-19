@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "commandexplain"
+version = "0.1.0"
+description = "Explains bash and zsh terminal commands in simple language."
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[project.scripts]
+commandexplain = "commandexplain.cli:main"
+
+[tool.setuptools]
+packages = ["commandexplain"]
+
+[tool.setuptools.package-data]
+commandexplain = ["data/*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

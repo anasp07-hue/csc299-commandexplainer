@@ -7,7 +7,7 @@ from typing import Any
 
 import pytest
 
-from commandexplain.lookup import load_commands, load_operators
+from commandexplain.lookup import load_commands, load_not_covered, load_operators
 
 COMMANDS = load_commands()
 OPERATORS = load_operators()
@@ -277,3 +277,29 @@ def test_builtin_only_commands_are_marked() -> None:
 def test_kill_keeps_flags_whole() -> None:
     """kill's -INT and -SIGKILL are signal names, so they must not be split (ADR 0014)."""
     assert COMMANDS["kill"]["keep_flags_whole"] is True
+
+
+# --- not_covered.json (SPEC.md §5.2, §9) ----------------------------------
+
+NOT_COVERED = load_not_covered()
+
+
+def test_not_covered_entries_are_well_formed() -> None:
+    """Each name is lowercase with no spaces, and its kind is 'tool' or 'uncovered'."""
+    for name, entry in NOT_COVERED.items():
+        assert name == name.strip().lower() and " " not in name, f"bad name '{name}'"
+        assert entry.keys() == {"kind"}, f"{name}: unexpected fields {sorted(entry)}"
+        assert entry["kind"] in {"tool", "uncovered"}, f"{name}: bad kind {entry['kind']}"
+
+
+def test_not_covered_does_not_overlap_commands() -> None:
+    """A name can't be both explained and 'not covered'."""
+    aliases = {alias for entry in COMMANDS.values() for alias in entry.get("aliases", [])}
+    overlap = NOT_COVERED.keys() & (COMMANDS.keys() | aliases)
+    assert not overlap, f"both covered and not covered: {sorted(overlap)}"
+
+
+@pytest.mark.parametrize("name", ["git", "unset", "unalias"])
+def test_review_examples_are_on_not_covered_list(name: str) -> None:
+    """The examples from the spec and ADR 0011 are on the list."""
+    assert name in NOT_COVERED

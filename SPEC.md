@@ -32,9 +32,16 @@ start
   │      no / can't detect → Ask: "Are you using bash or zsh?"
   │      invalid input → show the valid options and ask again
   ▼
+    Show: 'Using zsh. (Type "shell" any time to switch.)'
+  │
+  ▼
 [2] Ask: "Enter a command to explain (or 'quit' to leave):"
   │
   ├─ 'quit' / 'q' / Ctrl+D / Ctrl+C ─────────────────► goodbye message, exit 0
+  │
+  ├─ 'shell' ────────► ask "bash or zsh?" again → "Switched to bash." → back to [2]
+  │
+  ├─ on the "not covered" list (git, unset, ...) ────► not-covered message → back to [2]
   │
   ├─ command found ──────────────────────────────────► [3] explain → back to [2]
   │
@@ -50,13 +57,16 @@ start
 
 ### 3.1 Shell selection
 - **Auto-detect first:** read the `SHELL` environment variable and take the last part of the path (`/bin/zsh` → `zsh`).
-  - If it's `bash` or `zsh`, ask `Looks like you're using zsh. Is that right? (yes/no)`. **yes** picks that shell. **no** falls through to the manual question.
+  - If it's `bash` or `zsh`, ask `Looks like you're using zsh. Is that right? (yes/no)`. **yes** picks that shell. **no** falls through to the manual question. Answering with a shell name (`bash`, `zsh`, `1`, `2`) picks that shell (ADR 0017).
   - If `SHELL` is missing or names some other shell, go straight to the manual question.
 - Manual prompt: `Are you using bash or zsh? `
 - Accepts `bash` or `zsh`, ignoring case and surrounding spaces. Also accepts `1` (bash) and `2` (zsh).
 - Small typos are handled the same way as for commands (`bsh` → "Did you mean bash? (yes/no)").
-- If the input is invalid, show a hint and ask again: `Not sure? Run "echo $SHELL" in your terminal.`
-- The chosen shell lasts for the rest of the session.
+- Another real shell (`sh`, `ksh`, `dash`, `csh`, `tcsh`, `fish`, ...) is never "corrected". It gets `Sorry, this program only covers bash and zsh, not sh.` (ADR 0017).
+- Every answer that isn't accepted, including a declined "Did you mean", is followed by the hint, and then the question is asked again: `Please type bash or zsh. Not sure? Run "echo $SHELL" in your terminal.`
+- `quit` or `q` at either shell question leaves the program (ADR 0017).
+- After the shell is chosen, the program shows `Using zsh. (Type "shell" any time to switch.)`.
+- The chosen shell lasts for the rest of the session, unless the user types `shell`. That asks the manual question again (with the same typo handling) and then shows `Switched to bash.` (ADR 0016). `shell bash` (or `shell zsh`) switches at once, without asking (ADR 0017).
 
 ### 3.2 Command input
 - The user types a command name, with flags if they want: `ls`, `ls -la`, `rm -rf`, `chmod +x`. They can also type a pipe or chain: `ls -a | grep txt`, `mkdir docs && cd docs`.
@@ -84,6 +94,8 @@ start
   8. A command marked `keep_flags_whole` (`kill`) never has its single-dash groups split, because `-INT` and `-SIGKILL` are signal names, not letter groups (ADR 0014).
 - Empty input re-prompts silently.
 - An unclosed quote (`echo "hi`) prints `It looks like a quote (") is missing its partner. Please re-enter it.` and re-prompts.
+- A backslash at the very end (`echo hi\`) prints `Your command ends with a backslash (\), which needs something after it. Please re-enter it.` and re-prompts.
+- An empty command name (`'' -l`) prints `The command name is empty. Please re-enter it.` and re-prompts.
 - An operator with nothing on one side (`| grep`, `ls &&`) prints `Something is missing before/after "|". Please re-enter it.`
 
 ### 3.3 Explanation output
@@ -145,7 +157,7 @@ In short: list all files, then keep only the lines containing "txt".
   `'setopt' is a zsh command and doesn't work in bash. Explain it anyway? (yes/no)`
 
 ### 3.5 Exiting
-- `quit` or `q` exits. Ctrl+C and Ctrl+D (EOF) also exit cleanly with a goodbye message, with no traceback.
+- `quit` or `q` exits, at the command prompt and at the shell questions. Ctrl+C and Ctrl+D (EOF) exit cleanly at any prompt, with a goodbye message and no traceback.
 - `exit` is itself a shell command, so it is **explained** rather than used to exit. After the explanation, the program adds a tip: `(Tip: type "quit" to leave this program.)`
 
 ## 4. Spelling suggestions ("Did you mean")
@@ -160,6 +172,7 @@ In short: list all files, then keep only the lines containing "txt".
 - The yes/no prompt accepts `y`, `yes`, `n`, `no`, ignoring case. Anything else re-asks.
 - **yes**: explain the suggested command, keeping any flags the user typed (`sl -la` becomes `ls -la`).
 - **no**: print `Command not found. Please re-enter it.` and return to the command prompt.
+- **Commands after `sudo`** go through the same steps (ADR 0015). For `sudo sl -la`, the user is asked "Did you mean 'ls'?", and **yes** explains `sudo ls -la`. **No** drops the whole input with "Command not found. Please re-enter it." An inner command on the "not covered" list shows that message, and sudo is still explained. An inner command with no suggestion is still explained as "sudo runs "xyz", which I don't have an explanation for."
 - Typo correction applies to command names and the shell name. It does **not** apply to flags (they are too short for fuzzy matching to be reliable).
 
 ## 5. Data model (key-value pairs)
@@ -248,6 +261,21 @@ Operators get their own key-value file, `commandexplain/data/operators.json`:
 
 **Why JSON and not a Python dict in code:** the data stays separate from the logic, it's easy for non-programmers to edit, and it can be validated by a test. It still becomes a plain key-value `dict` in Python.
 
+### 5.2 Not covered
+
+`commandexplain/data/not_covered.json` lists names the program knows about but doesn't explain (§9). The key is the name, and the value has one field, `kind`:
+- `"tool"` for separate programs that aren't part of the terminal (`git`, `brew`, `python`): "'git' isn't a built-in terminal command, so it isn't covered."
+- `"uncovered"` for real terminal commands that v1 doesn't explain yet (`unset`, `sort`, `curl`): "'unset' is a real command, but I don't cover it yet."
+
+```json
+{
+  "git":   { "kind": "tool" },
+  "unset": { "kind": "uncovered" }
+}
+```
+
+A name can't be both on this list and in `commands.json`. This list is checked before spelling suggestions (ADR 0011).
+
 ## 6. Initial command coverage (v1)
 
 About 30 commands that ship with macOS/Linux or are built into the shell:
@@ -281,7 +309,8 @@ csc299-commandexplain-cli/
 │   ├── colors.py            # ANSI color helpers + on/off logic
 │   └── data/
 │       ├── commands.json
-│       └── operators.json
+│       ├── operators.json
+│       └── not_covered.json
 └── tests/
     ├── test_parser.py
     ├── test_lookup.py
@@ -323,8 +352,10 @@ csc299-commandexplain-cli/
 9. `ls -a | grep txt` explains `ls -a`, then the pipe, then `grep txt`. `grep "a|b" f` is treated as one command, not a pipe.
 10. `sl | grep x` asks "Did you mean 'ls'?" before explaining the chain.
 11. Output contains ANSI color codes in a terminal and none when piped (`python -m commandexplain | cat`), with `NO_COLOR` set, or with `--no-color`.
-12. Every entry in `commands.json` and `operators.json` passes the schema test in §5.
+12. Every entry in `commands.json`, `operators.json`, and `not_covered.json` passes the schema test in §5.
 13. All tests pass with `pytest`.
+14. Typing `shell` asks for the shell again, and later explanations use the new shell.
+15. `unset` shows "'unset' is a real command, but I don't cover it yet." and never "Did you mean 'unsetopt'?". `sudo sl` asks "Did you mean 'ls'?".
 
 ## 11. Implementation phases
 
@@ -366,7 +397,7 @@ Deliverables:
 - `__main__.py` and `pyproject.toml` so `python -m commandexplain` and `commandexplain` both work, plus the `--shell` option.
 - `tests/test_cli.py` runs simulated sessions using `input_fn`/`print_fn`.
 
-Done when: acceptance criteria 1–8 pass.
+Done when: acceptance criteria 1–8, 14, and 15 pass.
 
 ### Phase 4 — Pipes and chains
 **Goal:** explain inputs that contain more than one command.
@@ -393,7 +424,7 @@ Done when: acceptance criteria 11 and 13 pass, which means all criteria pass.
 |---|---|---|
 | 1 | Key-value data | 12 |
 | 2 | Explain one command | 2, 3 |
-| 3 | Interactive CLI | 1–8 |
+| 3 | Interactive CLI | 1–8, 14, 15 |
 | 4 | Pipes and chains | 9, 10 |
 | 5 | Colors and polish | 11, 13 |
 
@@ -417,8 +448,11 @@ Each decision has an ADR in `docs/adr/` with the full reasoning.
 | Argument layout | One `argument: x` line each (§3.2) | 0012 |
 | `sudo` with a shell builtin | Warn that it can't work, then explain the builtin (§3.3) | 0013 |
 | Signal names (`kill -INT`) | `keep_flags_whole` data field; never split (§3.2) | 0014 |
+| Typos after `sudo` | Suggest for inner commands too (§4) | 0015 |
+| Switching shells | Type `shell` to switch mid-session (§3.1) | 0016 |
+| Command list size | Keep the 35 commands in §6 for v1; more can be added as data later | 0017 |
+| Phase 3 details | Input-error wording, the `not_covered.json` format, and shell-question conveniences (§3.1, §3.2, §5.2) | 0017 |
 
 ## 13. Open questions
 
-1. **Command list:** is the list in §6 the right size and scope? Anything to add or remove?
-2. **Switching shells:** should there be a way to change shell mid-session (for example typing `shell`)?
+None right now. The earlier questions were answered: the command list stays as it is, and shell switching is ADR 0016.
