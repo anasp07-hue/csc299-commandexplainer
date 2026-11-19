@@ -134,12 +134,35 @@ All command knowledge lives in JSON files in `commandexplain/data/`. Adding a co
    pytest
    ```
 
-## Development
+## Running the tests
+
+The tests use [pytest](https://docs.pytest.org/). Set things up once, from the project folder with your virtual environment turned on (see [Install](#install)):
 
 ```bash
-pip install -e ".[dev]"   # installs pytest
-pytest                    # runs the full test suite
+pip install -e ".[dev]"   # installs the program plus pytest
 ```
+
+Then run the whole test suite:
+
+```bash
+pytest
+```
+
+If everything works, the last line says how many tests passed, for example `1087 passed in 0.40s`. Any failures are listed above that line with the test's name and what went wrong.
+
+Other useful ways to run them:
+
+| Command | What it does |
+|---|---|
+| `pytest -q` | Shorter output: dots for passing tests, then the summary |
+| `pytest -v` | Lists every test by name with PASSED or FAILED |
+| `pytest tests/test_parser.py` | Runs only one file's tests |
+| `pytest -k sudo` | Runs only tests whose names contain `sudo` |
+| `pytest -x` | Stops at the first failure |
+
+The tests live in `tests/`. Most modules have their own file (`test_parser.py` tests `parser.py`, and so on). `shell.py` is tested in `test_cli.py`, and `test_data.py` checks every entry in the JSON data files.
+
+## Development
 
 The project layout:
 
@@ -152,7 +175,7 @@ commandexplain/
   formatter.py   builds the explanation text
   colors.py      colors and when to turn them off
   data/          commands.json, operators.json, not_covered.json
-tests/           one test file per module, plus the data checks
+tests/           pytest tests for each module, plus the data checks
 docs/
   adr/           design decisions (why things work the way they do)
   handoffs/      notes at the end of each build phase
